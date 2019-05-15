@@ -113,3 +113,5 @@ ENV/
 
 *.model
 
+#ignore file with paths setting
+nnunet/paths.py
