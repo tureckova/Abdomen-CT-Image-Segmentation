@@ -49,7 +49,7 @@ class SoftDiceLoss(nn.Module):
         self.smooth = smooth
         self.y_onehot = None
 
-    def forward(self, x, y):
+    def forward(self, x, y):#output, target
         with torch.no_grad():
             y = y.long()
         shp_x = x.shape
@@ -125,13 +125,21 @@ def soft_dice(net_output, gt, smooth=1., smooth_in_nom=1., square_nominator=Fals
 
 
 class DC_and_CE_loss(nn.Module):
-    def __init__(self, soft_dice_kwargs, ce_kwargs, aggregate="sum"):
+    def __init__(self, soft_dice_kwargs, ce_kwargs, aggregate="sum", use_label=None):
         super(DC_and_CE_loss, self).__init__()
         self.aggregate = aggregate
         self.ce = CrossentropyND(**ce_kwargs)
         self.dc = SoftDiceLoss(apply_nonlin=softmax_helper, **soft_dice_kwargs)
+        self.use_label = use_label
 
     def forward(self, net_output, target):
+        # choose only the label we want to use
+        if self.use_label == 'organ':
+            target = target == 1
+        elif self.use_label == 'tumor':
+            target = target == 2
+        elif self.use_label == 'both':
+            target = target > 0
         dc_loss = self.dc(net_output, target)
         ce_loss = self.ce(net_output, target)
         if self.aggregate == "sum":

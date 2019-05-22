@@ -9,7 +9,7 @@ from nnunet.utilities.tensor_utilities import sum_tensor
 from torch.optim import lr_scheduler
 from nnunet.training.dataloading.dataset_loading import load_dataset, DataLoader3D, DataLoader2D, unpack_dataset
 from nnunet.training.loss_functions.dice_loss import DC_and_CE_loss
-from nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnunet.network_architecture import Generic_UNet
 from nnunet.network_architecture.initialization import InitWeights_He
 from torch import nn
 from nnunet.training.data_augmentation.default_data_augmentation import default_3D_augmentation_params, \
@@ -24,7 +24,7 @@ from collections import OrderedDict
 
 class nnUNetTrainer(NetworkTrainer):
     def __init__(self, plans_file, fold, output_folder=None, dataset_directory=None, batch_dice=True, stage=None,
-                 unpack_data=True, deterministic=True, fp16=False):
+                 unpack_data=True, deterministic=True, fp16=False, use_label=None):
         """
         :param deterministic:
         :param fold: can be either [0 ... 5) for cross-validation, 'all' to train on all available training data or
@@ -52,7 +52,7 @@ class nnUNetTrainer(NetworkTrainer):
         super(nnUNetTrainer, self).__init__(deterministic, fp16)
         self.unpack_data = unpack_data
         self.init_args = (plans_file, fold, output_folder, dataset_directory, batch_dice, stage, unpack_data,
-                          deterministic, fp16)
+                          deterministic, fp16, use_label)
         # set through arguments from init
         self.stage = stage
         self.experiment_name = self.__class__.__name__
@@ -82,8 +82,10 @@ class nnUNetTrainer(NetworkTrainer):
         self.basic_generator_patch_size = self.data_aug_params = None
 
         self.batch_dice = batch_dice
+        self.use_label = use_label
         self.loss = DC_and_CE_loss({'batch_dice': self.batch_dice, 'smooth': 1e-5, 'smooth_in_nom': True,
-                                    'do_bg': False, 'rebalance_weights': None, 'background_weight': 1}, OrderedDict())
+                                    'do_bg': False, 'rebalance_weights': None, 'background_weight': 1}, OrderedDict(),
+                                   use_label=use_label)
 
         self.online_eval_foreground_dc = []
         self.online_eval_tp = []
@@ -308,10 +310,10 @@ class nnUNetTrainer(NetworkTrainer):
         if self.threeD:
             dl_tr = DataLoader3D(self.dataset_tr, self.basic_generator_patch_size, self.patch_size, self.batch_size,
                                  False, oversample_foreground_percent=self.oversample_foreground_percent,
-                                 pad_mode="constant", pad_sides=self.pad_all_sides)
+                                 pad_mode="constant", pad_sides=self.pad_all_sides, use_label=self.use_label)
             dl_val = DataLoader3D(self.dataset_val, self.patch_size, self.patch_size, self.batch_size, False,
                                   oversample_foreground_percent=self.oversample_foreground_percent,
-                                  pad_mode="constant", pad_sides=self.pad_all_sides)
+                                  pad_mode="constant", pad_sides=self.pad_all_sides, use_label=self.use_label)
         else:
             dl_tr = DataLoader2D(self.dataset_tr, self.basic_generator_patch_size, self.patch_size, self.batch_size,
                                  transpose=self.plans.get('transpose_forward'),

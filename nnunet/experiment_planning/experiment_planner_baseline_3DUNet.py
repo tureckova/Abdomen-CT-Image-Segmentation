@@ -26,7 +26,7 @@ from nnunet.experiment_planning.configuration import FEATUREMAP_MIN_EDGE_LENGTH_
 from batchgenerators.utilities.file_and_folder_operations import *
 import shutil
 from nnunet.paths import *
-from nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnunet.network_architecture import Generic_UNet
 from collections import OrderedDict
 
 

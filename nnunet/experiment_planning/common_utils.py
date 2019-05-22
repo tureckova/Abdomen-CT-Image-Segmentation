@@ -14,7 +14,7 @@
 
 import numpy as np
 from copy import deepcopy
-from nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnunet.network_architecture import Generic_UNet
 from nnunet.experiment_planning.configuration import FEATUREMAP_MIN_EDGE_LENGTH_BOTTLENECK
 import SimpleITK as sitk
 import shutil

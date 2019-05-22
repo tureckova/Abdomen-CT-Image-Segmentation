@@ -19,6 +19,17 @@ try:
 except ImportError:
     amp = None
 
+def freeze_sequential(network):
+    for layer in network.children():
+        if type(layer.children()) != []:
+            freeze_sequential(layer)
+        if list(layer.children()) == []: # if leaf node, add it to list
+            try:
+                layer.weight.requires_grad = False
+                layer.bias.requires_grad = False
+            except AttributeError:
+                pass
+
 
 class NetworkTrainer(object):
     def __init__(self, deterministic=True, fp16=False):
@@ -305,6 +316,22 @@ class NetworkTrainer(object):
                 self.print_to_log_file("WARNING: FP16 training was requested but nvidia apex is not installed. "
                                        "Install it from https://github.com/NVIDIA/apex")
 
+    def init_model(self, fname):
+        # initialize the network weights from previously trained model
+        print("Loading checkpoint {} to initialize the model".format(fname))
+        saved_model = torch.load(fname, map_location=torch.device('cuda', torch.cuda.current_device()))
+        model_state_dict = saved_model['state_dict']
+        for key in [k for k in model_state_dict.keys() if k.startswith('seg_outputs')]:
+            if key in model_state_dict:
+                del model_state_dict[key]
+        self.network.load_state_dict(model_state_dict, strict=False)
+
+    def freeze_ag(self):
+        # freeze weights in attention gate so we do not trein them any more
+        print("Freezing weights in Attention gates")
+        freeze_sequential(self.network.ag)
+
+
     def run_training(self):
         self._maybe_init_amp()
 
@@ -503,6 +530,7 @@ class NetworkTrainer(object):
 
         self.optimizer.zero_grad()
 
+        #print("Data shape: {}".format(data.shape))
         output = self.network(data)
         l = self.loss(output, target)
 

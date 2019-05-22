@@ -51,7 +51,7 @@ Segmentation Decathlon.
 This is where the magic happens. nnU-Net can now analyze your dataset and determine how to train its 
 U-Net models. To run experiment planning and preprocessing for your dataset, execute the following command:
 
-`python experiment_planning/plan_and_preprocess_task.py -t TaskXX_MY_DATASET -p Y`
+`python3 experiment_planning/plan_and_preprocess_task.py -t Task07_Pancreas -p 8`
 
 here `TaskXX_MY_DATASET` specifies the task (your dataset) and `-p` determines how many processes will be used for 
 datatset analysis and preprocessing. Generally you want this number to be as high as you have CPU cores, unless you 
@@ -96,7 +96,7 @@ can be skipped.
 
 For `FOLD` in [0, 4], run:
 
-`python run/run_training.py 3d_lowres nnUNetTrainer TaskXX_MY_DATASET FOLD --ndet`
+`python run/run_training.py 3d_lowres nnUNetTrainer Task07_Pancreas 4"" --ndet`
 
 After validation these models will automatically also predict the segmentations for the next stage of the cascade and 
 save them in the correct spacing.

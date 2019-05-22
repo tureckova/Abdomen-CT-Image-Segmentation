@@ -332,12 +332,16 @@ class Generic_UNet(SegmentationNetwork):
                                   self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs,
                                   self.nonlin, self.nonlin_kwargs)
             ))
-            self.ag.append(
-                MultiAttentionBlock(in_size=nfeatures_from_down, gate_size=nfeatures_from_skip, inter_size=nfeatures_from_down,
-                                    nonlocal_mode='concatenation', sub_sample_factor=pool_op_kernel_sizes[-(u+1)],
-                                    norm_layer=self.norm_op
-                                    )
-            )
+            if u >= (num_pool-2):
+                #nfeatures_from_skip = self.conv_blocks_context[-(1 + u)].output_channels
+                #print("{} Ag expects input".format(u))
+                #print("")
+                self.ag.append(
+                    MultiAttentionBlock(in_size=nfeatures_from_skip, gate_size=nfeatures_from_down, inter_size=nfeatures_from_skip,
+                                        nonlocal_mode='concatenation', sub_sample_factor=pool_op_kernel_sizes[-(u+1)],
+                                        norm_layer=self.norm_op
+                                        )
+                )
 
         for ds in range(len(self.conv_blocks_localization)):
             self.seg_outputs.append(conv_op(self.conv_blocks_localization[ds][-1].output_channels, num_classes,
@@ -380,11 +384,17 @@ class Generic_UNet(SegmentationNetwork):
         x = self.conv_blocks_context[-1](x)
 
         for u in range(len(self.tu)):
-            gate = self.ag[u](skips[-(u + 1)], x)
-            x = self.tu[u](x)
-            x = torch.cat((x, gate), dim=1)
-            x = self.conv_blocks_localization[u](x)
-            seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
+            if u >= (len(self.tu)-2):
+                gate = self.ag[u-(len(self.tu)-2)](skips[-(u + 1)], x)
+                x = self.tu[u](x)
+                x = torch.cat((x, gate), dim=1)
+                x = self.conv_blocks_localization[u](x)
+                seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
+            else:
+                x = self.tu[u](x)
+                x = torch.cat((x, skips[-(u + 1)]), dim=1)
+                x = self.conv_blocks_localization[u](x)
+                seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
 
         if self.do_ds:
             return tuple([seg_outputs[-1]] + [i(j) for i, j in
@@ -417,13 +427,20 @@ class Generic_UNet(SegmentationNetwork):
 
         num_feat = base_num_features
 
+        # add ag comsumtion
+        #tmp += num_feat*np.prod(map_size)*3 + num_feat*2*
+
         for p in range(npool):
             for pi in range(len(num_pool_per_axis)):
                 map_size[pi] /= pool_op_kernel_sizes[p][pi]
             num_feat = min(num_feat * 2, max_num_features)
-            num_blocks = 5 if p < (npool -1) else 2 # 2 + 2 for the convs of encode/decode and 1 for transposed conv
+            num_blocks = 5 if p < (npool - 1) else 2
+            #num_blocks = 8 if p == (npool -2) else 5 # 2 + 2 for the convs of encode/decode and 1 for transposed conv + 3 for ag
             tmp += num_blocks * np.prod(map_size) * num_feat
-            # print(p, map_size, num_feat, tmp)
+            if p >= (npool-2):
+                tmp += 5 * np.prod(map_size) * num_feat
+            print(p, map_size, num_feat, tmp)
+
         return tmp
 
 
@@ -445,13 +462,15 @@ class MultiAttentionBlock(nn.Module):
 #            init_weights(m, init_type='kaiming')
 
     def forward(self, input, gating_signal):
-        gate_1, attention_1 = self.gate_block_1(input, gating_signal)
+        #gate_1, attention_1 = self.gate_block_1(input, gating_signal)
+        gate_1 = self.gate_block_1(input, gating_signal)
 
         return self.combine_gates(gate_1)#, attention_1
     
     
 if __name__ == '__main__':
-
+    from torch.optim import lr_scheduler
+    import time
     model = Generic_UNet(input_channels=1, base_num_features=30, num_classes=2, num_pool=5, num_conv_per_stage=2,
                  feat_map_mul_on_downscale=2, conv_op=nn.Conv3d,
                  norm_op=nn.BatchNorm3d, norm_op_kwargs=None,
@@ -461,8 +480,27 @@ if __name__ == '__main__':
                  pool_op_kernel_sizes=[[1, 2, 2], [1, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]],
                  conv_kernel_sizes=[[3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3]],
                  upscale_logits=False, convolutional_pooling=False, convolutional_upsampling=False)
-    inputs = torch.zeros([1, 1, 32, 32, 32])
+    model.cuda()
+    inputs = torch.zeros([2, 1, 64, 128, 128]).cuda(non_blocking=True)
+    optimizer = torch.optim.Adam(model.parameters(), 3e-4, weight_decay=3e-5, amsgrad=True)
+    lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=30,
+                                                           verbose=True, threshold=1e-3, threshold_mode="abs")
 
+    #try train itteration
+    print("***Try training***")
+    t1 = time.time()
+    model.train()
+    preds = model(inputs)
+    t2 = time.time()
+    print("Train iterration took: {}".format(t2-t1))
+    print("preds shape: {}".format(preds[0].shape))
+
+    #try eval
+    print("***Try evaluation***")
     model.eval()
+    t1 = time.time()
     with torch.no_grad():
         preds = model(inputs)
+    t2 = time.time()
+    print("Eval iterration took: {}".format(t2 - t1))
+    print("preds shape: {}".format(preds[0].shape))

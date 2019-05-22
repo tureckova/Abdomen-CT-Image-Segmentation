@@ -415,3 +415,20 @@ class Generic_UNet(SegmentationNetwork):
         return tmp
 
 
+if __name__ == '__main__':
+
+    model = Generic_UNet(input_channels=1, base_num_features=30, num_classes=2, num_pool=5, num_conv_per_stage=2,
+                 feat_map_mul_on_downscale=2, conv_op=nn.Conv3d,
+                 norm_op=nn.BatchNorm3d, norm_op_kwargs=None,
+                 dropout_op=nn.Dropout3d, dropout_op_kwargs=None,
+                 nonlin=nn.LeakyReLU, nonlin_kwargs=None, deep_supervision=True, dropout_in_localization=False,
+                 final_nonlin=softmax_helper, weightInitializer=InitWeights_He(1e-2),
+                 pool_op_kernel_sizes=[[1, 2, 2], [1, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]],
+                 conv_kernel_sizes=[[3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3]],
+                 upscale_logits=False, convolutional_pooling=False, convolutional_upsampling=False)
+    model.cuda()
+    inputs = torch.zeros([1, 1, 96, 160, 128]).to('cuda')
+
+    model.eval()
+    with torch.no_grad():
+        preds = model(inputs)

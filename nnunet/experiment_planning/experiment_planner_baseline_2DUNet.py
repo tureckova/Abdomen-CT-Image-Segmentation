@@ -18,7 +18,7 @@ from nnunet.experiment_planning.plan_and_preprocess_task import create_lists_fro
 from nnunet.preprocessing.preprocessing import PreprocessorFor2D
 from nnunet.experiment_planning.configuration import *
 from nnunet.paths import *
-from nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnunet.network_architecture import Generic_UNet
 import numpy as np
 from batchgenerators.utilities.file_and_folder_operations import join, load_pickle
 from nnunet.experiment_planning.common_utils import get_pool_and_conv_props

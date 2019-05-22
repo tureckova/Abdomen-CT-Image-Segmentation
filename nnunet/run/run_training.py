@@ -48,6 +48,12 @@ if __name__ == "__main__":
     parser.add_argument("--find_lr", required=False, default=False, action="store_true", help="not used here, just for fun")
     parser.add_argument("--valbest", required=False, default=False, action="store_true", help="hands off. This is not intended to be used")
     parser.add_argument("--fp16", required=False, default=False, action="store_true", help="enable fp16 training. Makes sense for 2d only! (and only on supported hardware!)")
+    parser.add_argument("--use_label", required=False, default=None, help="if None uses all default labels,"
+                                                                          "if organ uses only label marked as 1,"
+                                                                          "if tumor uses only label marked as 2,"
+                                                                          "if both unites label 1 and 2 into one label")
+    parser.add_argument("--init_model", required=False, default=None, help="Path to trained model which will be used to initialize weights of the network before training")
+    parser.add_argument("--freeze_ag", required=False, default=False, help="If True the weights in Attention gates in model will be freezed")
 
     args = parser.parse_args()
 
@@ -62,6 +68,7 @@ if __name__ == "__main__":
     deterministic = not args.ndet
     valbest = args.valbest
     fp16 = args.fp16
+    use_label = args.use_label
 
     if unpack == 0:
         unpack = False
@@ -90,7 +97,7 @@ if __name__ == "__main__":
 
     trainer = trainer_class(plans_file, fold, output_folder=output_folder_name, dataset_directory=dataset_directory,
                             batch_dice=batch_dice, stage=stage, unpack_data=unpack, deterministic=deterministic,
-                            fp16=fp16)
+                            fp16=fp16, use_label=use_label)
 
     trainer.initialize(not validation_only)
 
@@ -100,6 +107,10 @@ if __name__ == "__main__":
         if not validation_only:
             if args.continue_training:
                 trainer.load_latest_checkpoint()
+            if args.init_model is not None:
+                trainer.init_model(args.init_model)
+            if args.freeze_ag:
+                trainer.freeze_ag()
             trainer.run_training()
         elif not valbest:
             trainer.load_latest_checkpoint(train=False)

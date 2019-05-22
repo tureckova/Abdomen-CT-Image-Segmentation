@@ -147,7 +147,7 @@ def crop_2D_image_force_fg(img, crop_size, force_class=None):
 class DataLoader3D(SlimDataLoaderBase):
     def __init__(self, data, patch_size, final_patch_size, batch_size, has_prev_stage=False,
                  oversample_foreground_percent=0.0, memmap_mode="r", pad_mode="edge", pad_kwargs_data=None,
-                 pad_sides=None):
+                 pad_sides=None, use_label=None):
         """
         This is the basic data loader for 3D networks. It uses preprocessed data as produced by my (Fabian) preprocessing.
         You can load the data with load_dataset(folder) where folder is the folder where the npz files are located. If there
@@ -170,6 +170,7 @@ class DataLoader3D(SlimDataLoaderBase):
         :param stage: ignore this (Fabian only)
         :param random: Sample keys randomly; CAREFUL! non-random sampling requires batch_size=1, otherwise you will iterate batch_size times over the dataset
         :param oversample_foreground: half the batch will be forced to contain at least some foreground (equal prob for each of the foreground classes)
+        :param use_label: if None uses all default labels, if organ uses only label marked as 1, if tumor uses only label marked as 2, if both unites label 1 and 2 into one label
         """
         super(DataLoader3D, self).__init__(data, batch_size, None)
         if pad_kwargs_data is None:
@@ -191,6 +192,7 @@ class DataLoader3D(SlimDataLoaderBase):
         self.memmap_mode = memmap_mode
         self.num_channels = None
         self.pad_sides = pad_sides
+        self.use_label = use_label
 
     def get_do_oversample(self, batch_idx):
         return not batch_idx < round(self.batch_size * (1 - self.oversample_foreground_percent))
@@ -215,6 +217,14 @@ class DataLoader3D(SlimDataLoaderBase):
                 case_all_data = np.load(self._data[i]['data_file'][:-4] + ".npy", self.memmap_mode)
             else:
                 case_all_data = np.load(self._data[i]['data_file'])['data']
+
+            # # choose only the label we want to use
+            # if self.use_label == 'organ':
+            #     case_all_data[1]=case_all_data[1] == 1
+            # elif self.use_label == 'tumor':
+            #     case_all_data[1]=case_all_data[1] == 2
+            # elif self.use_label == 'both':
+            #     case_all_data[1] = case_all_data[1] > 0
 
             # If we are doing the cascade then we will also need to load the segmentation of the previous stage and
             # concatenate it. Here it will be concatenates to the segmentation because the augmentations need to be
