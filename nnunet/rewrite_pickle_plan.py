@@ -3,9 +3,10 @@ from batchgenerators.utilities.file_and_folder_operations import save_pickle
 
 import numpy as np
 
+from pathlib import Path
 
-plans_file = "/home/tureckova/Pictures/nnUNet/nnUNet_preprocessed/Task07_Pancreas/nnUNetPlans_plans_3D.pkl"
-new_plans_file = "/home/tureckova/Pictures/nnUNet/nnUNet_preprocessed/Task07_Pancreas/nnUNetPlans_one-class_plans_3D.pkl"
+plans_file = Path.joinpath(Path.home(),"Pictures/nnUNet/nnUNet_preprocessed/Task07_Pancreas/nnUNetPlans_plans_3D.pkl")
+new_plans_file = Path.joinpath(Path.home(),"Pictures/nnUNet/nnUNet_preprocessed/Task07_Pancreas/nnUNetPlans_one-class_plans_3D.pkl")
 
 plans = load_pickle(plans_file)
 
