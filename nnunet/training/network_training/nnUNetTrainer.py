@@ -101,9 +101,9 @@ class nnUNetTrainer(NetworkTrainer):
         self.update_fold(fold)
         self.pad_all_sides = None
 
-        self.lr_scheduler_eps = 1e-3
-        self.lr_scheduler_patience = 30
-        self.initial_lr = 3e-4
+        self.lr_scheduler_eps = 3e-7
+        self.lr_scheduler_patience = 20
+        self.initial_lr = 3e-5
         self.weight_decay = 3e-5
 
         self.oversample_foreground_percent = 0.33
@@ -384,6 +384,187 @@ class nnUNetTrainer(NetworkTrainer):
                                        tiled, tile_in_z, step, min_size, use_gaussian=use_gaussian,
                                        pad_border_mode=self.inference_pad_border_mode,
                                        pad_kwargs=self.inference_pad_kwargs)[2]
+    def validate_nifti(self, do_mirroring=True, use_train_mode=False, tiled=True, step=2, save_softmax=True,
+                 use_gaussian=True, compute_global_dice=True, override=True, validation_folder_name='validation'):
+        """
+        2018_12_05: I added global accumulation of TP, FP and FN for the validation in here. This is because I believe
+        that selecting models is easier when computing the Dice globally instead of independently for each case and
+        then averaging over cases. The Lung dataset in particular is very unstable because of the small size of the
+        Lung Lesions. My theory is that even though the global Dice is different than the acutal target metric it is
+        still a good enough substitute that allows us to get a lot more stable results when rerunning the same
+        experiment twice. FYI: computer vision community uses the global jaccard for the evaluation of Cityscapes etc,
+        not the per-image jaccard averaged over images.
+        The reason I am accumulating TP/FP/FN here and not from the nifti files (which are used by our Evaluator) is
+        that all predictions made here will have identical voxel spacing whereas voxel spacings in the nifti files
+        will be different (which we could compensate for by using the volume per voxel but that would require the
+        evaluator to understand spacings which is does not at this point)
+
+        :param do_mirroring:
+        :param use_train_mode:
+        :param mirror_axes:
+        :param tiled:
+        :param tile_in_z:
+        :param step:
+        :param use_nifti:
+        :param save_softmax:
+        :param use_gaussian:
+        :param use_temporal_models:
+        :return:
+        """
+        assert self.was_initialized, "must initialize, ideally with checkpoint (or train first)"
+        if self.dataset_val is None:
+            self.load_dataset()
+            self.do_split()
+
+        output_folder = join(self.output_folder, validation_folder_name)
+        maybe_mkdir_p(output_folder)
+
+        if do_mirroring:
+            mirror_axes = self.data_aug_params['mirror_axes']
+        else:
+            mirror_axes = ()
+
+        pred_gt_tuples = []
+
+        export_pool = Pool(4)
+        results = []
+        global_tp = OrderedDict()
+        global_fp = OrderedDict()
+        global_fn = OrderedDict()
+
+        import nibabel
+        folderPath = "/home/tureckova/Pictures/nnUNet/nnUNet_output/nnUNet/3d_lowres/Task07_Pancreas/nnUNetTrainer__nnUNetPlans_one-class/fold_0/validation/"
+        for k in self.dataset_val.keys():
+            print(k)
+            properties = self.dataset[k]['properties']
+            fname = properties['list_of_data_files'][0].split("/")[-1][:-12]
+            if override or (not isfile(join(output_folder, fname + ".nii.gz"))):
+                data = np.load(self.dataset[k]['data_file'])['data']
+
+                transpose_forward = self.plans.get('transpose_forward')
+                if transpose_forward is not None:
+                    data = data.transpose([0] + [i+1 for i in transpose_forward])
+
+                print(k, data.shape)
+                data[-1][data[-1] == -1] = 0
+
+                # softmax_pred = self.predict_preprocessed_data_return_softmax(data[:-1], do_mirroring, 1,
+                #                                                              use_train_mode, 1, mirror_axes, tiled,
+                #                                                              True, step, self.patch_size,
+                #                                                              use_gaussian=use_gaussian)
+                # if transpose_forward is not None:
+                #     transpose_backward = self.plans.get('transpose_backward')
+                #     softmax_pred = softmax_pred.transpose([0] + [i+1 for i in transpose_backward])
+
+                if compute_global_dice:
+                    # predicted_segmentation = softmax_pred.argmax(0)
+                    imPath = folderPath + k + ".nii.gz"
+                    predicted_segmentation = nibabel.load(imPath).get_data()
+                    gt_segmentation = data[-1]
+                    if self.use_label is None:
+                        labels = properties['classes']
+                        labels = [int(i) for i in labels if i > 0]
+                        for l in labels:
+                            if l not in global_fn.keys():
+                                global_fn[l] = 0
+                            if l not in global_fp.keys():
+                                global_fp[l] = 0
+                            if l not in global_tp.keys():
+                                global_tp[l] = 0
+                            conf = ConfusionMatrix((predicted_segmentation == l).astype(int),
+                                                   (gt_segmentation == l).astype(int))
+                            conf.compute()
+                            global_fn[l] += conf.fn
+                            global_fp[l] += conf.fp
+                            global_tp[l] += conf.tp
+                    else:
+                        if 0 not in global_fn.keys():
+                            global_fn[0] = 0
+                        if 0 not in global_fp.keys():
+                            global_fp[0] = 0
+                        if 0 not in global_tp.keys():
+                            global_tp[0] = 0
+                        if 1 not in global_fn.keys():
+                            global_fn[1] = 0
+                        if 1 not in global_fp.keys():
+                            global_fp[1] = 0
+                        if 1 not in global_tp.keys():
+                            global_tp[1] = 0
+                        conf = ConfusionMatrix((predicted_segmentation == 0).astype(int),
+                                               (gt_segmentation == 0).astype(int))
+                        conf.compute()
+                        global_fn[0] += conf.fn
+                        global_fp[0] += conf.fp
+                        global_tp[0] += conf.tp
+                        if self.use_label is "both":
+                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
+                                               (gt_segmentation > 1).astype(int))
+                            conf.compute()
+                            global_fn[1] += conf.fn
+                            global_fp[1] += conf.fp
+                            global_tp[1] += conf.tp
+                        elif self.use_label == "organ":
+                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
+                                                   (gt_segmentation == 1).astype(int))
+                            conf.compute()
+                            global_fn[1] += conf.fn
+                            global_fp[1] += conf.fp
+                            global_tp[1] += conf.tp
+                        elif self.use_label == "tumor":
+                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
+                                                   (gt_segmentation == 2).astype(int))
+                            conf.compute()
+                            global_fn[1] += conf.fn
+                            global_fp[1] += conf.fp
+                            global_tp[1] += conf.tp
+
+                if save_softmax:
+                    softmax_fname = join(output_folder, fname + ".npz")
+                else:
+                    softmax_fname = None
+
+                """There is a problem with python process communication that prevents us from communicating obejcts 
+                larger than 2 GB between processes (basically when the length of the pickle string that will be sent is 
+                communicated by the multiprocessing.Pipe object then the placeholder (\%i I think) does not allow for long 
+                enough strings (lol). This could be fixed by changing i to l (for long) but that would require manually 
+                patching system python code. We circumvent that problem here by saving softmax_pred to a npy file that will 
+                then be read (and finally deleted) by the Process. save_segmentation_nifti_from_softmax can take either 
+                filename or np.ndarray and will handle this automatically"""
+                if np.prod(softmax_pred.shape) > (2e9 / 4 * 0.9): # *0.9 just to be save
+                    np.save(join(output_folder, fname + ".npy"), softmax_pred)
+                    softmax_pred = join(output_folder, fname + ".npy")
+                results.append(export_pool.starmap_async(save_segmentation_nifti_from_softmax,
+                                                         ((softmax_pred, join(output_folder, fname + ".nii.gz"),
+                                                          properties, 3, None, None, None, softmax_fname, None),
+                                                          )
+                                                         )
+                               )
+                #save_segmentation_nifti_from_softmax(softmax_pred, join(output_folder, fname + ".nii.gz"),
+                #                                               properties, 3, None, None,
+                #                                               None,
+                #                                               softmax_fname,
+                #                                               None)
+
+            pred_gt_tuples.append([join(output_folder, fname + ".nii.gz"),
+                                   join(self.gt_niftis_folder, fname + ".nii.gz")])
+
+        _ = [i.get() for i in results]
+        print("finished prediction, now evaluating...")
+
+        task = self.dataset_directory.split("/")[-1]
+        job_name = self.experiment_name
+        _ = aggregate_scores(pred_gt_tuples, labels=list(range(self.num_classes)),
+                             json_output_file=join(output_folder, "summary.json"),
+                             json_name=job_name + " val tiled %s" % (str(tiled)),
+                             json_author="Fabian",
+                             json_task=task, num_threads=3)
+        if compute_global_dice:
+            global_dice = OrderedDict()
+            all_labels = list(global_fn.keys())
+            for l in all_labels:
+                global_dice[int(l)] = float(2 * global_tp[l] / (2 * global_tp[l] + global_fn[l] + global_fp[l]))
+            write_json(global_dice, join(output_folder, "global_dice.json"))
+
 
     def validate(self, do_mirroring=True, use_train_mode=False, tiled=True, step=2, save_softmax=True,
                  use_gaussian=True, compute_global_dice=True, override=True, validation_folder_name='validation'):
@@ -458,20 +639,62 @@ class nnUNetTrainer(NetworkTrainer):
                 if compute_global_dice:
                     predicted_segmentation = softmax_pred.argmax(0)
                     gt_segmentation = data[-1]
-                    labels = properties['classes']
-                    labels = [int(i) for i in labels if i > 0]
-                    for l in labels:
-                        if l not in global_fn.keys():
-                            global_fn[l] = 0
-                        if l not in global_fp.keys():
-                            global_fp[l] = 0
-                        if l not in global_tp.keys():
-                            global_tp[l] = 0
-                        conf = ConfusionMatrix((predicted_segmentation == l).astype(int), (gt_segmentation == l).astype(int))
+                    if self.use_label is None:
+                        labels = properties['classes']
+                        labels = [int(i) for i in labels if i > 0]
+                        for l in labels:
+                            if l not in global_fn.keys():
+                                global_fn[l] = 0
+                            if l not in global_fp.keys():
+                                global_fp[l] = 0
+                            if l not in global_tp.keys():
+                                global_tp[l] = 0
+                            conf = ConfusionMatrix((predicted_segmentation == l).astype(int),
+                                                   (gt_segmentation == l).astype(int))
+                            conf.compute()
+                            global_fn[l] += conf.fn
+                            global_fp[l] += conf.fp
+                            global_tp[l] += conf.tp
+                    else:
+                        if 0 not in global_fn.keys():
+                            global_fn[0] = 0
+                        if 0 not in global_fp.keys():
+                            global_fp[0] = 0
+                        if 0 not in global_tp.keys():
+                            global_tp[0] = 0
+                        if 1 not in global_fn.keys():
+                            global_fn[1] = 0
+                        if 1 not in global_fp.keys():
+                            global_fp[1] = 0
+                        if 1 not in global_tp.keys():
+                            global_tp[1] = 0
+                        conf = ConfusionMatrix((predicted_segmentation == 0).astype(int),
+                                               (gt_segmentation == 0).astype(int))
                         conf.compute()
-                        global_fn[l] += conf.fn
-                        global_fp[l] += conf.fp
-                        global_tp[l] += conf.tp
+                        global_fn[0] += conf.fn
+                        global_fp[0] += conf.fp
+                        global_tp[0] += conf.tp
+                        if self.use_label is "both":
+                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
+                                               (gt_segmentation > 1).astype(int))
+                            conf.compute()
+                            global_fn[1] += conf.fn
+                            global_fp[1] += conf.fp
+                            global_tp[1] += conf.tp
+                        elif self.use_label == "organ":
+                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
+                                                   (gt_segmentation == 1).astype(int))
+                            conf.compute()
+                            global_fn[1] += conf.fn
+                            global_fp[1] += conf.fp
+                            global_tp[1] += conf.tp
+                        elif self.use_label == "tumor":
+                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
+                                                   (gt_segmentation == 2).astype(int))
+                            conf.compute()
+                            global_fn[1] += conf.fn
+                            global_fp[1] += conf.fp
+                            global_tp[1] += conf.tp
 
                 if save_softmax:
                     softmax_fname = join(output_folder, fname + ".npz")

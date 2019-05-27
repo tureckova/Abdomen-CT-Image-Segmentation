@@ -330,6 +330,7 @@ class NetworkTrainer(object):
         # freeze weights in attention gate so we do not trein them any more
         print("Freezing weights in Attention gates")
         freeze_sequential(self.network.ag)
+        #freeze_sequential(self.network.conv_blocks_context)
 
 
     def run_training(self):

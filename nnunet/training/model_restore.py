@@ -127,7 +127,11 @@ def load_model_and_checkpoint_files(folder, folds=None):
 
 
 if __name__ == "__main__":
-    pkl = "/home/fabian/PhD/results/nnUNetV2/nnUNetV2_3D_fullres/Task04_Hippocampus/fold0/model_best.model.pkl"
+    pkl = "/home/tureckova/Pictures/nnUNet/nnUNet_output/nnUNet/3d_lowres/Task07_Pancreas/nnUNetTrainer__nnUNetPlans_one-class/fold_1/model_best.model.pkl"
     checkpoint = pkl[:-4]
-    train = False
+    train = True
     trainer = restore_model(pkl, checkpoint, train)
+    trainer.run_training()
+    val_folder = "validation"
+    # predict validation
+    trainer.validate(save_softmax=False, validation_folder_name=val_folder)
