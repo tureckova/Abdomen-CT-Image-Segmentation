@@ -65,7 +65,8 @@ class Evaluator:
                  labels=None,
                  metrics=None,
                  advanced_metrics=None,
-                 nan_for_nonexisting=True):
+                 nan_for_nonexisting=True,
+                 use_label=None):
 
         self.test = None
         self.reference = None
@@ -73,6 +74,7 @@ class Evaluator:
         self.labels = None
         self.nan_for_nonexisting = nan_for_nonexisting
         self.result = None
+        self.use_label = None
 
         self.metrics = []
         if metrics is None:
@@ -108,6 +110,11 @@ class Evaluator:
 
         self.reference = reference
 
+    def set_use_label(self, use_label):
+        """Set which label use for evaluation"""
+
+        self.use_label = use_label
+
     def set_labels(self, labels):
         """Set the labels.
         :param labels= may be a dictionary (int->str), a set (of ints), a tuple (of ints) or a list (of ints). Labels
@@ -126,6 +133,13 @@ class Evaluator:
 
     def construct_labels(self):
         """Construct label set from unique entries in segmentations."""
+
+        if self.use_label == "organ":
+            self.reference = self.reference == 1
+        elif self.use_label == "tumor":
+            self.reference = self.reference == 2
+        elif self.use_label == "both":
+            self.reference = self.reference > 0
 
         if self.test is None and self.reference is None:
             raise ValueError("No test or reference segmentations.")
@@ -296,6 +310,14 @@ class NiftiEvaluator(Evaluator):
             self.reference_nifti = None
             super(NiftiEvaluator, self).set_reference(reference)
 
+    def set_use_label(self, use_label):
+        """Set which label use for evaluation"""
+
+        if use_label is not None:
+            self.use_label = use_label
+            super(NiftiEvaluator, self).set_use_label(use_label)
+
+
     def evaluate(self, test=None, reference=None, voxel_spacing=None, **metric_kwargs):
 
         if voxel_spacing is None:
@@ -323,6 +345,7 @@ def run_evaluation(args):
 def aggregate_scores(test_ref_pairs,
                      evaluator=NiftiEvaluator,
                      labels=None,
+                     use_label=None,
                      nanmean=True,
                      json_output_file=None,
                      json_name="",
@@ -351,6 +374,9 @@ def aggregate_scores(test_ref_pairs,
 
     if labels is not None:
         evaluator.set_labels(labels)
+
+    if use_label is not None:
+        evaluator.set_use_label(use_label)
 
     all_scores = OrderedDict()
     all_scores["all"] = []

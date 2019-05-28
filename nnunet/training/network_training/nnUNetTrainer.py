@@ -554,6 +554,7 @@ class nnUNetTrainer(NetworkTrainer):
         task = self.dataset_directory.split("/")[-1]
         job_name = self.experiment_name
         _ = aggregate_scores(pred_gt_tuples, labels=list(range(self.num_classes)),
+                             use_label=self.use_label,
                              json_output_file=join(output_folder, "summary.json"),
                              json_name=job_name + " val tiled %s" % (str(tiled)),
                              json_author="Fabian",
@@ -732,6 +733,7 @@ class nnUNetTrainer(NetworkTrainer):
         task = self.dataset_directory.split("/")[-1]
         job_name = self.experiment_name
         _ = aggregate_scores(pred_gt_tuples, labels=list(range(self.num_classes)),
+                             use_label=self.use_label,
                              json_output_file=join(output_folder, "summary.json"),
                              json_name=job_name + " val tiled %s" % (str(tiled)),
                              json_author="Fabian",
@@ -746,17 +748,35 @@ class nnUNetTrainer(NetworkTrainer):
     def run_online_evaluation(self, output, target):
         with torch.no_grad():
             num_classes = output.shape[1]
-            output_softmax = softmax_helper(output)
-            output_seg = output_softmax.argmax(1)
-            target = target[:, 0]
-            axes = tuple(range(1, len(target.shape)))
-            tp_hard = torch.zeros((target.shape[0], num_classes - 1)).to(output_seg.device.index)
-            fp_hard = torch.zeros((target.shape[0], num_classes - 1)).to(output_seg.device.index)
-            fn_hard = torch.zeros((target.shape[0], num_classes - 1)).to(output_seg.device.index)
-            for c in range(1, num_classes):
-                tp_hard[:, c - 1] = sum_tensor((output_seg == c).float() * (target == c).float(), axes=axes)
-                fp_hard[:, c - 1] = sum_tensor((output_seg == c).float() * (target != c).float(), axes=axes)
-                fn_hard[:, c - 1] = sum_tensor((output_seg != c).float() * (target == c).float(), axes=axes)
+            if self.use_label == "both":
+                output_softmax = softmax_helper(output)
+                output_seg = output_softmax.argmax(1)
+                target = target[:, 0]
+                axes = tuple(range(1, len(target.shape)))
+                tp_hard = torch.zeros((target.shape[0], num_classes - 1)).to(output_seg.device.index)
+                fp_hard = torch.zeros((target.shape[0], num_classes - 1)).to(output_seg.device.index)
+                fn_hard = torch.zeros((target.shape[0], num_classes - 1)).to(output_seg.device.index)
+                tp_hard[:, 0] = sum_tensor((output_seg == 1).float() * (target > 0).float(), axes=axes)
+                fp_hard[:, 0] = sum_tensor((output_seg == 1).float() * (target == 0).float(), axes=axes)
+                fn_hard[:, 0] = sum_tensor((output_seg != 1).float() * (target > 0).float(), axes=axes)
+            else:
+                if self.use_label == "organ":
+                    gt_classes = [1]
+                elif self.use_label == "tumor":
+                    gt_classes = [2]
+                else:
+                    gt_classes = [1, 2]
+                output_softmax = softmax_helper(output)
+                output_seg = output_softmax.argmax(1)
+                target = target[:, 0]
+                axes = tuple(range(1, len(target.shape)))
+                tp_hard = torch.zeros((target.shape[0], num_classes - 1)).to(output_seg.device.index)
+                fp_hard = torch.zeros((target.shape[0], num_classes - 1)).to(output_seg.device.index)
+                fn_hard = torch.zeros((target.shape[0], num_classes - 1)).to(output_seg.device.index)
+                for c_target, c_gt in zip(range(1, num_classes), gt_classes):
+                    tp_hard[:, c_target - 1] = sum_tensor((output_seg == c_target).float() * (target == c_gt).float(), axes=axes)
+                    fp_hard[:, c_target - 1] = sum_tensor((output_seg == c_target).float() * (target != c_gt).float(), axes=axes)
+                    fn_hard[:, c_target - 1] = sum_tensor((output_seg != c_target).float() * (target == c_gt).float(), axes=axes)
 
             tp_hard = tp_hard.sum(0, keepdim=False).detach().cpu().numpy()
             fp_hard = fp_hard.sum(0, keepdim=False).detach().cpu().numpy()

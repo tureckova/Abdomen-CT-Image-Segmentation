@@ -105,8 +105,6 @@ if __name__ == "__main__":
         trainer.find_lr()
     else:
         if not validation_only:
-            if continue_training:
-
             if args.continue_training:
                 trainer.load_latest_checkpoint()
             if args.init_model is not None:
