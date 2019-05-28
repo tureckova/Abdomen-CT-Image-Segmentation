@@ -103,7 +103,7 @@ class nnUNetTrainer(NetworkTrainer):
 
         self.lr_scheduler_eps = 3e-7
         self.lr_scheduler_patience = 20
-        self.initial_lr = 3e-5
+        self.initial_lr = 3e-4
         self.weight_decay = 3e-5
 
         self.oversample_foreground_percent = 0.33

@@ -111,6 +111,7 @@ if __name__ == "__main__":
                 trainer.init_model(args.init_model)
             if args.freeze_ag:
                 trainer.freeze_ag()
+                trainer.initial_lr = 3e-5
             trainer.run_training()
         elif not valbest:
             trainer.load_latest_checkpoint(train=False)
