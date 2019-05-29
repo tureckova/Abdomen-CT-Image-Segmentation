@@ -123,9 +123,12 @@ if __name__ == "__main__":
             val_folder = "validation"
 
         # predict validation
-        trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder)
+        # trainer.load_dataset()
+        # trainer.do_split()
+        # del trainer.dataset_val.keys['pancreas_096']
+        trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder, override=False)
 
-        if network == '3d_lowres':
-            trainer.load_best_checkpoint(False)
-            print("predicting segmentations for the next stage of the cascade")
-            predict_next_stage(trainer, join(dataset_directory, trainer.plans['data_identifier'] + "_stage%d" % 1))
+        # if network == '3d_lowres':
+        #     trainer.load_best_checkpoint(False)
+        #     print("predicting segmentations for the next stage of the cascade")
+        #     predict_next_stage(trainer, join(dataset_directory, trainer.plans['data_identifier'] + "_stage%d" % 1))

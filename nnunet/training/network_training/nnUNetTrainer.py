@@ -432,8 +432,6 @@ class nnUNetTrainer(NetworkTrainer):
         global_fp = OrderedDict()
         global_fn = OrderedDict()
 
-        import nibabel
-        folderPath = "/home/tureckova/Pictures/nnUNet/nnUNet_output/nnUNet/3d_lowres/Task07_Pancreas/nnUNetTrainer__nnUNetPlans_one-class/fold_0/validation/"
         for k in self.dataset_val.keys():
             print(k)
             properties = self.dataset[k]['properties']
@@ -448,18 +446,16 @@ class nnUNetTrainer(NetworkTrainer):
                 print(k, data.shape)
                 data[-1][data[-1] == -1] = 0
 
-                # softmax_pred = self.predict_preprocessed_data_return_softmax(data[:-1], do_mirroring, 1,
-                #                                                              use_train_mode, 1, mirror_axes, tiled,
-                #                                                              True, step, self.patch_size,
-                #                                                              use_gaussian=use_gaussian)
-                # if transpose_forward is not None:
-                #     transpose_backward = self.plans.get('transpose_backward')
-                #     softmax_pred = softmax_pred.transpose([0] + [i+1 for i in transpose_backward])
+                softmax_pred = self.predict_preprocessed_data_return_softmax(data[:-1], do_mirroring, 1,
+                                                                             use_train_mode, 1, mirror_axes, tiled,
+                                                                             True, step, self.patch_size,
+                                                                             use_gaussian=use_gaussian)
+                if transpose_forward is not None:
+                    transpose_backward = self.plans.get('transpose_backward')
+                    softmax_pred = softmax_pred.transpose([0] + [i+1 for i in transpose_backward])
 
                 if compute_global_dice:
-                    # predicted_segmentation = softmax_pred.argmax(0)
-                    imPath = folderPath + k + ".nii.gz"
-                    predicted_segmentation = nibabel.load(imPath).get_data()
+                    predicted_segmentation = softmax_pred.argmax(0)
                     gt_segmentation = data[-1]
                     if self.use_label is None:
                         labels = properties['classes']
@@ -615,6 +611,7 @@ class nnUNetTrainer(NetworkTrainer):
         global_fp = OrderedDict()
         global_fn = OrderedDict()
 
+        del self.dataset_val['pancreas_096']
         for k in self.dataset_val.keys():
             print(k)
             properties = self.dataset[k]['properties']
