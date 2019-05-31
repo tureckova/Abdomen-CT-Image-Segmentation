@@ -377,6 +377,7 @@ def aggregate_scores(test_ref_pairs,
 
     if use_label is not None:
         evaluator.set_use_label(use_label)
+        evaluator.construct_labels()
 
     all_scores = OrderedDict()
     all_scores["all"] = []

@@ -611,7 +611,8 @@ class nnUNetTrainer(NetworkTrainer):
         global_fp = OrderedDict()
         global_fn = OrderedDict()
 
-        del self.dataset_val['pancreas_096']
+        if 'pancreas_096' in self.dataset_val.keys():
+            del self.dataset_val['pancreas_096']
         for k in self.dataset_val.keys():
             print(k)
             properties = self.dataset[k]['properties']
