@@ -107,11 +107,12 @@ if __name__ == "__main__":
         if not validation_only:
             if args.continue_training:
                 trainer.load_latest_checkpoint()
-            if args.init_model is not None:
-                trainer.init_model(args.init_model)
-            if args.freeze_ag:
-                trainer.freeze_ag()
-                trainer.initial_lr = 3e-5
+            else:
+                if args.init_model is not None:
+                    trainer.init_model(args.init_model)
+                if args.freeze_ag:
+                    trainer.freeze_ag()
+                    trainer.initial_lr = 3e-5
             trainer.run_training()
         elif not valbest:
             trainer.load_latest_checkpoint(train=False)
@@ -123,9 +124,6 @@ if __name__ == "__main__":
             val_folder = "validation"
 
         # predict validation
-        # trainer.load_dataset()
-        # trainer.do_split()
-        # del trainer.dataset_val.keys['pancreas_096']
         trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder, override=False)
 
         # if network == '3d_lowres':
