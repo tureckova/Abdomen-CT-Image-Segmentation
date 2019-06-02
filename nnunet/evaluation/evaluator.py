@@ -134,13 +134,6 @@ class Evaluator:
     def construct_labels(self):
         """Construct label set from unique entries in segmentations."""
 
-        if self.use_label == "organ":
-            self.reference = self.reference == 1
-        elif self.use_label == "tumor":
-            self.reference = self.reference == 2
-        elif self.use_label == "both":
-            self.reference = self.reference > 0
-
         if self.test is None and self.reference is None:
             raise ValueError("No test or reference segmentations.")
         elif self.test is None:
@@ -178,6 +171,14 @@ class Evaluator:
 
         if self.labels is None:
             self.construct_labels()
+
+        if self.use_label is not None:
+            if self.use_label == "organ":
+                self.reference = (self.reference == 1).astype(int)
+            elif self.use_label == "tumor":
+                self.reference = (self.reference == 2).astype(int)
+            elif self.use_label == "both":
+                self.reference = (self.reference >= 1).astype(int)
 
         self.metrics.sort()
 
@@ -377,7 +378,6 @@ def aggregate_scores(test_ref_pairs,
 
     if use_label is not None:
         evaluator.set_use_label(use_label)
-        evaluator.construct_labels()
 
     all_scores = OrderedDict()
     all_scores["all"] = []

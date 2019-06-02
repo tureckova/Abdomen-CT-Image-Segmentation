@@ -432,6 +432,8 @@ class nnUNetTrainer(NetworkTrainer):
         global_fp = OrderedDict()
         global_fn = OrderedDict()
 
+        if 'pancreas_096' in self.dataset_val.keys():
+            del self.dataset_val['pancreas_096']
         for k in self.dataset_val.keys():
             print(k)
             properties = self.dataset[k]['properties']
@@ -460,59 +462,27 @@ class nnUNetTrainer(NetworkTrainer):
                     if self.use_label is None:
                         labels = properties['classes']
                         labels = [int(i) for i in labels if i > 0]
-                        for l in labels:
-                            if l not in global_fn.keys():
-                                global_fn[l] = 0
-                            if l not in global_fp.keys():
-                                global_fp[l] = 0
-                            if l not in global_tp.keys():
-                                global_tp[l] = 0
-                            conf = ConfusionMatrix((predicted_segmentation == l).astype(int),
-                                                   (gt_segmentation == l).astype(int))
-                            conf.compute()
-                            global_fn[l] += conf.fn
-                            global_fp[l] += conf.fp
-                            global_tp[l] += conf.tp
                     else:
-                        if 0 not in global_fn.keys():
-                            global_fn[0] = 0
-                        if 0 not in global_fp.keys():
-                            global_fp[0] = 0
-                        if 0 not in global_tp.keys():
-                            global_tp[0] = 0
-                        if 1 not in global_fn.keys():
-                            global_fn[1] = 0
-                        if 1 not in global_fp.keys():
-                            global_fp[1] = 0
-                        if 1 not in global_tp.keys():
-                            global_tp[1] = 0
-                        conf = ConfusionMatrix((predicted_segmentation == 0).astype(int),
-                                               (gt_segmentation == 0).astype(int))
-                        conf.compute()
-                        global_fn[0] += conf.fn
-                        global_fp[0] += conf.fp
-                        global_tp[0] += conf.tp
-                        if self.use_label is "both":
-                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
-                                               (gt_segmentation > 1).astype(int))
-                            conf.compute()
-                            global_fn[1] += conf.fn
-                            global_fp[1] += conf.fp
-                            global_tp[1] += conf.tp
+                        labels = [1]
+                        if self.use_label == "both":
+                            gt_segmentation = (gt_segmentation >= 1).astype(int)
                         elif self.use_label == "organ":
-                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
-                                                   (gt_segmentation == 1).astype(int))
-                            conf.compute()
-                            global_fn[1] += conf.fn
-                            global_fp[1] += conf.fp
-                            global_tp[1] += conf.tp
+                            gt_segmentation = (gt_segmentation == 1).astype(int)
                         elif self.use_label == "tumor":
-                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
-                                                   (gt_segmentation == 2).astype(int))
-                            conf.compute()
-                            global_fn[1] += conf.fn
-                            global_fp[1] += conf.fp
-                            global_tp[1] += conf.tp
+                            gt_segmentation = (gt_segmentation == 2).astype(int)
+                    for l in labels:
+                        if l not in global_fn.keys():
+                            global_fn[l] = 0
+                        if l not in global_fp.keys():
+                            global_fp[l] = 0
+                        if l not in global_tp.keys():
+                            global_tp[l] = 0
+                        conf = ConfusionMatrix((predicted_segmentation == l).astype(int),
+                                               (gt_segmentation == l).astype(int))
+                        conf.compute()
+                        global_fn[l] += conf.fn
+                        global_fp[l] += conf.fp
+                        global_tp[l] += conf.tp
 
                 if save_softmax:
                     softmax_fname = join(output_folder, fname + ".npz")
@@ -641,59 +611,27 @@ class nnUNetTrainer(NetworkTrainer):
                     if self.use_label is None:
                         labels = properties['classes']
                         labels = [int(i) for i in labels if i > 0]
-                        for l in labels:
-                            if l not in global_fn.keys():
-                                global_fn[l] = 0
-                            if l not in global_fp.keys():
-                                global_fp[l] = 0
-                            if l not in global_tp.keys():
-                                global_tp[l] = 0
-                            conf = ConfusionMatrix((predicted_segmentation == l).astype(int),
-                                                   (gt_segmentation == l).astype(int))
-                            conf.compute()
-                            global_fn[l] += conf.fn
-                            global_fp[l] += conf.fp
-                            global_tp[l] += conf.tp
                     else:
-                        if 0 not in global_fn.keys():
-                            global_fn[0] = 0
-                        if 0 not in global_fp.keys():
-                            global_fp[0] = 0
-                        if 0 not in global_tp.keys():
-                            global_tp[0] = 0
-                        if 1 not in global_fn.keys():
-                            global_fn[1] = 0
-                        if 1 not in global_fp.keys():
-                            global_fp[1] = 0
-                        if 1 not in global_tp.keys():
-                            global_tp[1] = 0
-                        conf = ConfusionMatrix((predicted_segmentation == 0).astype(int),
-                                               (gt_segmentation == 0).astype(int))
-                        conf.compute()
-                        global_fn[0] += conf.fn
-                        global_fp[0] += conf.fp
-                        global_tp[0] += conf.tp
-                        if self.use_label is "both":
-                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
-                                               (gt_segmentation > 1).astype(int))
-                            conf.compute()
-                            global_fn[1] += conf.fn
-                            global_fp[1] += conf.fp
-                            global_tp[1] += conf.tp
+                        labels = [1]
+                        if self.use_label == "both":
+                            gt_segmentation = (gt_segmentation >= 1).astype(int)
                         elif self.use_label == "organ":
-                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
-                                                   (gt_segmentation == 1).astype(int))
-                            conf.compute()
-                            global_fn[1] += conf.fn
-                            global_fp[1] += conf.fp
-                            global_tp[1] += conf.tp
+                            gt_segmentation = (gt_segmentation == 1).astype(int)
                         elif self.use_label == "tumor":
-                            conf = ConfusionMatrix((predicted_segmentation == 1).astype(int),
-                                                   (gt_segmentation == 2).astype(int))
-                            conf.compute()
-                            global_fn[1] += conf.fn
-                            global_fp[1] += conf.fp
-                            global_tp[1] += conf.tp
+                            gt_segmentation = (gt_segmentation == 2).astype(int)
+                    for l in labels:
+                        if l not in global_fn.keys():
+                            global_fn[l] = 0
+                        if l not in global_fp.keys():
+                            global_fp[l] = 0
+                        if l not in global_tp.keys():
+                            global_tp[l] = 0
+                        conf = ConfusionMatrix((predicted_segmentation == l).astype(int),
+                                               (gt_segmentation == l).astype(int))
+                        conf.compute()
+                        global_fn[l] += conf.fn
+                        global_fp[l] += conf.fp
+                        global_tp[l] += conf.tp
 
                 if save_softmax:
                     softmax_fname = join(output_folder, fname + ".npz")
