@@ -1,6 +1,10 @@
 
+#preprocess dataset
+python3 experiment_planning/plan_and_preprocess_task.py -t KiTS2019 -p 6
+
 # train from scratch both labels
 CUDA_VISIBLE_DEVICES=1 python3 run/run_training.py 3d_lowres nnUNetTrainer Task07_Pancreas 0 -p="nnUNetPlans_one-class" --use_label="both"
+python3 run/run_training.py 3d_lowres nnUNetTrainer KiTS2019 0 -p="nnUNetPlans" --ndet
 
 # continuously train tumor label
 python3 run/run_training.py 3d_lowres nnUNetTrainer Task07_Pancreas 0 -p="nnUNetPlans_one-class" --use_label="tumor" --init_model="/home/tureckova/Pictures/nnUNet/nnUNet_output/nnUNet/3d_lowres/Task07_Pancreas/nnUNetTrainer__nnUNetPlans-original/fold_4/model_best.model" --freeze_ag=True
