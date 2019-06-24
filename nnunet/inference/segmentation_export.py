@@ -21,7 +21,7 @@ from batchgenerators.utilities.file_and_folder_operations import *
 
 def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname, dct, order=1, region_class_order=None,
                                          seg_postprogess_fn=None, seg_postprocess_args=None, resampled_npz_fname=None,
-                                         non_postprocessed_fname=None):
+                                         non_postprocessed_fname=None, save_original_values=False):
     """
     This is a utility for writing segmentations to nifto and npz. It requires the data to have been preprocessed by
     GenericPreprocessor because it depends on the property dictionary output (dct) to know the geometry of the original
@@ -84,7 +84,9 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname, dct, o
         np.savez_compressed(resampled_npz_fname, softmax=seg_old_spacing.astype(np.float16))
         save_pickle(dct, resampled_npz_fname[:-4] + ".pkl")
 
-    if region_class_order is None:
+    if save_original_values:
+        seg_old_spacing = np.moveaxis(seg_old_spacing, 0, -1)
+    elif region_class_order is None:
         seg_old_spacing = seg_old_spacing.argmax(0)
     else:
         seg_old_spacing_final = np.zeros(seg_old_spacing.shape[1:])
@@ -94,6 +96,8 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname, dct, o
 
     bbox = dct.get('crop_bbox')
 
+    if save_original_values:
+        bbox = None
     if bbox is not None:
         seg_old_size = np.zeros(shape_original_before_cropping)
         for c in range(3):
@@ -109,7 +113,10 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname, dct, o
     else:
         seg_old_size_postprocessed = seg_old_size
 
-    seg_resized_itk = sitk.GetImageFromArray(seg_old_size_postprocessed.astype(np.uint8))
+    if save_original_values:
+        seg_resized_itk = sitk.GetImageFromArray(seg_old_size_postprocessed.astype(np.float))
+    else:
+        seg_resized_itk = sitk.GetImageFromArray(seg_old_size_postprocessed.astype(np.uint8))
     seg_resized_itk.SetSpacing(dct['itk_spacing'])
     seg_resized_itk.SetOrigin(dct['itk_origin'])
     seg_resized_itk.SetDirection(dct['itk_direction'])

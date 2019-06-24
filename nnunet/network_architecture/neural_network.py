@@ -19,6 +19,10 @@ from torch import nn
 import torch
 from scipy.ndimage.filters import gaussian_filter
 
+from itertools import combinations
+from .visualize_attention import HookBasedFeatureExtractor
+from torch.autograd import Variable
+
 
 class NeuralNetwork(nn.Module):
     def __init__(self):
@@ -47,6 +51,7 @@ class SegmentationNetwork(NeuralNetwork):
         self.num_classes = None
         super(NeuralNetwork, self).__init__()
         self.inference_apply_nonlin = lambda x:x
+        self.save_attention = False
 
     def predict_3D(self, x, do_mirroring, num_repeats=1, use_train_mode=False, batch_size=1, mirror_axes=(0, 1, 2),
                    tiled=False, tile_in_z=True, step=2, patch_size=None, regions_class_order=None, use_gaussian=False,
@@ -99,6 +104,52 @@ class SegmentationNetwork(NeuralNetwork):
             self.train(current_mode)
         return res
 
+    def predict_3D_attention(self, x, do_mirroring, num_repeats=1, use_train_mode=False, batch_size=1, mirror_axes=(0, 1, 2),
+                   tiled=False, tile_in_z=True, step=2, patch_size=None, regions_class_order=None, use_gaussian=False,
+                   pad_border_mode="edge", pad_kwargs=None):
+        """
+        :param x: (c, x, y , z)
+        :param do_mirroring:
+        :param num_repeats:
+        :param use_train_mode:
+        :param batch_size:
+        :param mirror_axes:
+        :param tiled:
+        :param tile_in_z:
+        :param step:
+        :param patch_size:
+        :param regions_class_order:
+        :param use_gaussian:
+        :return:
+        """
+        self.save_attention = True
+        print("debug: mirroring", do_mirroring, "mirror_axes", mirror_axes)
+        if len(mirror_axes) > 0 and max(mirror_axes) > 2:
+            raise ValueError("mirror axes. duh")
+        current_mode = self.training
+        if use_train_mode is not None and use_train_mode:
+            self.train()
+        elif use_train_mode is not None and not use_train_mode:
+            self.eval()
+        else:
+            pass
+        assert len(x.shape) == 4, "data must have shape (c,x,y,z)"
+        if self.conv_op == nn.Conv3d:
+            if tiled:
+                res = self._internal_predict_3D_3Dconv_tiled(x, num_repeats, batch_size, tile_in_z, step, do_mirroring,
+                                                             mirror_axes, patch_size, regions_class_order, use_gaussian,
+                                                             pad_border_mode, pad_kwargs=pad_kwargs)
+            else:
+                res = self._internal_predict_3D_3Dconv(x, do_mirroring, num_repeats, patch_size, batch_size,
+                                                       mirror_axes, regions_class_order, pad_border_mode, pad_kwargs=pad_kwargs)
+        elif self.conv_op == nn.Conv2d:
+            raise RuntimeError("Invalid conv op, attention implemented only in 3D mode")
+        else:
+            raise RuntimeError("Invalid conv op, cannot determine what dimensionality (2d/3d) the network is")
+        if use_train_mode is not None:
+            self.train(current_mode)
+        return res
+
     def predict_2D(self, x, do_mirroring, num_repeats=1, use_train_mode=False, batch_size=1, mirror_axes=(0, 1),
                    tiled=False, step=2, patch_size=None, regions_class_order=None, use_gaussian=False,
                    pad_border_mode="edge", pad_kwargs=None):
@@ -128,7 +179,76 @@ class SegmentationNetwork(NeuralNetwork):
             self.train(current_mode)
         return res
 
+
     def _internal_maybe_mirror_and_pred_3D(self, x, num_repeats, mirror_axes, do_mirroring=True, mult=None):
+        with torch.no_grad():
+            x_torch = torch.from_numpy(x).float()
+            if self.get_device() == "cpu":
+                x_torch = x_torch.cpu()
+            else:
+                x_torch = x_torch.cuda(self.get_device())
+
+            result_torch = torch.zeros([1, self.num_classes] + list(x.shape[2:])).float()
+            if self.get_device() == "cpu":
+                result_torch = result_torch.cpu()
+            else:
+                result_torch = result_torch.cuda(self.get_device())
+            if self.save_attention:
+                result_att0 = torch.zeros([1, 1] + [x.shape[2]] + [int(x.shape[3]/2)] + [int(x.shape[4]/2)]).float()
+                result_att1 = torch.zeros([1, 1] + list(x.shape[2:])).float()
+                if self.get_device() == "cpu":
+                    result_att0 = result_att0.cpu()
+                    result_att1 = result_att1.cpu()
+                else:
+                    result_att0 = result_att0.cuda(self.get_device())
+                    result_att1 = result_att1.cuda(self.get_device())
+
+            axes_to_flip = [i + 2 for i in mirror_axes]
+            #print("axes_to_flip: {}".format(axes_to_flip))
+            # create all combinations of axes to flip
+            axes = []
+            for i in range(len(axes_to_flip)):
+                for j in combinations(axes_to_flip, i + 1):
+                    axes.append(j)
+
+            # prepare feature hook if we want to visualize attention
+            if self.save_attention:
+                layer_name = 'ag'
+                feature_extractor_ag0 = HookBasedFeatureExtractor(self, layer_name, 0, upscale=False)
+                feature_extractor_ag1 = HookBasedFeatureExtractor(self, layer_name, 1, upscale=False)
+
+            # predict mirrored version of image
+            for ax in axes:
+                pred = self.inference_apply_nonlin(self(torch.flip(x_torch, dims=ax)))
+                result_torch += torch.flip(pred, dims=ax)
+                if self.save_attention:
+                    inp_fmap, out_fmap0 = feature_extractor_ag0.forward(Variable(x_torch))
+                    result_att0 += out_fmap0[1]
+                    inp_fmap, out_fmap1 = feature_extractor_ag1.forward(Variable(x_torch))
+                    result_att1 += out_fmap1[1]
+
+            result_torch /= len(axes) + 1
+            if self.save_attention:
+                result_att0 /= len(axes) + 1
+                # upscale result_att1
+                result_att0_big = nn.functional.interpolate(result_att0, size=tuple(result_att1.shape[2:]))
+                result_att1 /= len(axes) + 1
+
+        if mult is not None:
+            result_torch[:, :] *= mult
+            if self.save_attention:
+                result_att0_big[:, :] *= mult
+                result_att1[:, :] *= mult
+
+        if self.save_attention:
+            return result_torch.detach().cpu().numpy(),\
+                   result_att0_big.detach().cpu().numpy(),\
+                   result_att1.detach().cpu().numpy()
+        else:
+            return result_torch.detach().cpu().numpy()
+
+
+    def _internal_maybe_mirror_and_pred_3D_old(self, x, num_repeats, mirror_axes, do_mirroring=True, mult=None):
         with torch.no_grad():
             x_torch = torch.from_numpy(x).float()
             if self.get_device() == "cpu":
@@ -190,7 +310,8 @@ class SegmentationNetwork(NeuralNetwork):
 
     def _internal_predict_3D_3Dconv_tiled(self, x, num_repeats, BATCH_SIZE=None, tile_in_z=True, step=2,
                                           do_mirroring=True, mirror_axes=(0, 1, 2), patch_size=None,
-                                          regions_class_order=None, use_gaussian=False, pad_border_mode="edge", pad_kwargs=None):
+                                          regions_class_order=None, use_gaussian=False, pad_border_mode="edge",
+                                          pad_kwargs=None):
         "x must be (c, x, y, z)"
         assert len(x.shape) == 4, "x must be (c, x, y, z)"
         with torch.no_grad():
@@ -219,6 +340,9 @@ class SegmentationNetwork(NeuralNetwork):
             nb_of_classes = self(a).size()[1]
 
             result = np.zeros([nb_of_classes] + list(data.shape[2:]), dtype=np.float32)
+            if self.save_attention:
+                result_att0 = np.zeros([nb_of_classes] + list(data.shape[2:]), dtype=np.float32)
+                result_att1 = np.zeros([nb_of_classes] + list(data.shape[2:]), dtype=np.float32)
             result_numsamples = np.zeros([nb_of_classes] + list(data.shape[2:]), dtype=np.float32)
             if use_gaussian:
                 tmp = np.zeros(patch_size)
@@ -255,16 +379,32 @@ class SegmentationNetwork(NeuralNetwork):
                     for z in zsteps:
                         lb_z = z - patch_size[2] // 2
                         ub_z = z + patch_size[2] // 2
-                        result[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z] += \
-                            self._internal_maybe_mirror_and_pred_3D(data[:, :, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z],
-                                                                          num_repeats, mirror_axes, do_mirroring, add_torch)[0]
-                        result_numsamples[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z] += add
+                        if self.save_attention:
+                            res, att0, att1 = self._internal_maybe_mirror_and_pred_3D(data[:, :, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z],
+                                                                        num_repeats, mirror_axes, do_mirroring,
+                                                                        add_torch)
+                            result[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z]+= res[0]
+                            result_att0[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z]+= att0[0]
+                            result_att1[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z]+= att1[0]
+                            result_numsamples[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z] += add
+                        else:
+                            result[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z] += \
+                                self._internal_maybe_mirror_and_pred_3D(data[:, :, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z],
+                                                                        num_repeats, mirror_axes, do_mirroring,
+                                                                        add_torch)[0]
+                            result_numsamples[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z] += add
 
             slicer = tuple([slice(0, result.shape[i]) for i in range(len(result.shape) - (len(slicer) - 1))] + slicer[1:])
             result = result[slicer]
             result_numsamples = result_numsamples[slicer]
 
             softmax_pred = result / result_numsamples
+
+            if self.save_attention:
+                result_att0 = result_att0[slicer]
+                result_att1 = result_att1[slicer]
+                att0 = result_att0 / result_numsamples
+                att1 = result_att1 / result_numsamples
 
             # patient_data = patient_data[:, :old_shape[0], :old_shape[1], :old_shape[2]]
             if regions_class_order is None:
@@ -274,7 +414,10 @@ class SegmentationNetwork(NeuralNetwork):
                 predicted_segmentation = np.zeros(predicted_segmentation_shp, dtype=np.float32)
                 for i, c in enumerate(regions_class_order):
                     predicted_segmentation[softmax_pred[i] > 0.5] = c
-        return predicted_segmentation, None, softmax_pred, None
+        if self.save_attention:
+            return predicted_segmentation, None, softmax_pred, None, att0, att1
+        else:
+            return predicted_segmentation, None, softmax_pred, None
 
     def _internal_predict_2D_2Dconv(self, x, do_mirroring, num_repeats, min_size=None, BATCH_SIZE=None,
                                     mirror_axes=(0, 1), regions_class_order=None, pad_border_mode="edge", pad_kwargs=None):

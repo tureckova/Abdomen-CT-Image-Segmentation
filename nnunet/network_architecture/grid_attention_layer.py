@@ -104,7 +104,7 @@ class _GridAttentionBlockND(nn.Module):
         y = sigm_psi_f.expand_as(x) * x
         W_y = self.W(y)
 
-        return W_y#, sigm_psi_f
+        return W_y, sigm_psi_f
 
     def _concatenation_debug(self, x, g):
         input_size = x.size()
@@ -129,7 +129,7 @@ class _GridAttentionBlockND(nn.Module):
         y = sigm_psi_f.expand_as(x) * x
         W_y = self.W(y)
 
-        return W_y#, sigm_psi_f
+        return W_y, sigm_psi_f
 
 
     def _concatenation_residual(self, x, g):
@@ -156,7 +156,7 @@ class _GridAttentionBlockND(nn.Module):
         y = sigm_psi_f.expand_as(x) * x
         W_y = self.W(y)
 
-        return W_y#, sigm_psi_f
+        return W_y, sigm_psi_f
 
 
 class GridAttentionBlock2D(_GridAttentionBlockND):

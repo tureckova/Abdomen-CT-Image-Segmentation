@@ -124,6 +124,7 @@ if __name__ == "__main__":
             val_folder = "validation"
 
         # predict validation
+        #trainer.save_attention(override=True)
         trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder, override=False)
 
         # if network == '3d_lowres':

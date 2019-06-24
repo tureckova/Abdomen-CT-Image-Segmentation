@@ -385,7 +385,7 @@ class Generic_UNet(SegmentationNetwork):
 
         for u in range(len(self.tu)):
             if u >= (len(self.tu)-2):
-                gate = self.ag[u-(len(self.tu)-2)](skips[-(u + 1)], x)
+                gate, at = self.ag[u-(len(self.tu)-2)](skips[-(u + 1)], x)
                 x = self.tu[u](x)
                 x = torch.cat((x, gate), dim=1)
                 x = self.conv_blocks_localization[u](x)
@@ -462,24 +462,24 @@ class MultiAttentionBlock(nn.Module):
 #            init_weights(m, init_type='kaiming')
 
     def forward(self, input, gating_signal):
-        #gate_1, attention_1 = self.gate_block_1(input, gating_signal)
-        gate_1 = self.gate_block_1(input, gating_signal)
+        gate_1, attention_1 = self.gate_block_1(input, gating_signal)
+        #gate_1 = self.gate_block_1(input, gating_signal)
 
-        return self.combine_gates(gate_1)#, attention_1
+        return self.combine_gates(gate_1), attention_1
     
     
 if __name__ == '__main__':
     from torch.optim import lr_scheduler
     import time
     model = Generic_UNet(input_channels=1, base_num_features=30, num_classes=2, num_pool=5, num_conv_per_stage=2,
-                 feat_map_mul_on_downscale=2, conv_op=nn.Conv3d,
-                 norm_op=nn.BatchNorm3d, norm_op_kwargs=None,
-                 dropout_op=nn.Dropout3d, dropout_op_kwargs=None,
-                 nonlin=nn.LeakyReLU, nonlin_kwargs=None, deep_supervision=True, dropout_in_localization=False,
-                 final_nonlin=softmax_helper, weightInitializer=InitWeights_He(1e-2),
-                 pool_op_kernel_sizes=[[1, 2, 2], [1, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]],
-                 conv_kernel_sizes=[[3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3]],
-                 upscale_logits=False, convolutional_pooling=False, convolutional_upsampling=False)
+                         feat_map_mul_on_downscale=2, conv_op=nn.Conv3d,
+                         norm_op=nn.BatchNorm3d, norm_op_kwargs=None,
+                         dropout_op=nn.Dropout3d, dropout_op_kwargs=None,
+                         nonlin=nn.LeakyReLU, nonlin_kwargs=None, deep_supervision=True, dropout_in_localization=False,
+                         final_nonlin=softmax_helper, weightInitializer=InitWeights_He(1e-2),
+                         pool_op_kernel_sizes=[[1, 2, 2], [1, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]],
+                         conv_kernel_sizes=[[3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3]],
+                         upscale_logits=False, convolutional_pooling=True, convolutional_upsampling=True)
     model.cuda()
     inputs = torch.zeros([2, 1, 64, 128, 128]).cuda(non_blocking=True)
     optimizer = torch.optim.Adam(model.parameters(), 3e-4, weight_decay=3e-5, amsgrad=True)

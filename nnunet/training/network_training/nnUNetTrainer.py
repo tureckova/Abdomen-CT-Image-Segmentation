@@ -20,6 +20,7 @@ from multiprocessing import Pool
 from nnunet.evaluation.metrics import ConfusionMatrix
 matplotlib.use("agg")
 from collections import OrderedDict
+import nibabel as nib
 
 
 class nnUNetTrainer(NetworkTrainer):
@@ -384,6 +385,33 @@ class nnUNetTrainer(NetworkTrainer):
                                        tiled, tile_in_z, step, min_size, use_gaussian=use_gaussian,
                                        pad_border_mode=self.inference_pad_border_mode,
                                        pad_kwargs=self.inference_pad_kwargs)[2]
+
+    def predict_preprocessed_data_return_attention(self, data, do_mirroring, num_repeats, use_train_mode, batch_size,
+                                                 mirror_axes, tiled, tile_in_z, step, min_size, use_gaussian):
+        """
+        Don't use this. If you need softmax output, use preprocess_predict_nifti and set softmax_output_file.
+        :param data:
+        :param do_mirroring:
+        :param num_repeats:
+        :param use_train_mode:
+        :param batch_size:
+        :param mirror_axes:
+        :param tiled:
+        :param tile_in_z:
+        :param step:
+        :param min_size:
+        :param use_gaussian:
+        :param use_temporal:
+        :return:
+        """
+        assert isinstance(self.network, (SegmentationNetwork, nn.DataParallel))
+        res = self.network.predict_3D_attention(data, do_mirroring, num_repeats, use_train_mode, batch_size, mirror_axes,
+                                       tiled, tile_in_z, step, min_size, use_gaussian=use_gaussian,
+                                       pad_border_mode=self.inference_pad_border_mode,
+                                       pad_kwargs=self.inference_pad_kwargs)
+        return res[4], res[5]
+
+
     def validate_nifti(self, do_mirroring=True, use_train_mode=False, tiled=True, step=2, save_softmax=True,
                  use_gaussian=True, compute_global_dice=True, override=True, validation_folder_name='validation'):
         """
@@ -434,6 +462,8 @@ class nnUNetTrainer(NetworkTrainer):
 
         if 'pancreas_096' in self.dataset_val.keys():
             del self.dataset_val['pancreas_096']
+        if 'pancreas_043' in self.dataset_val.keys():
+            del self.dataset_val['pancreas_043']
         for k in self.dataset_val.keys():
             print(k)
             properties = self.dataset[k]['properties']
@@ -583,6 +613,8 @@ class nnUNetTrainer(NetworkTrainer):
 
         if 'pancreas_096' in self.dataset_val.keys():
             del self.dataset_val['pancreas_096']
+        if 'pancreas_043' in self.dataset_val.keys():
+            del self.dataset_val['pancreas_043']
         for k in self.dataset_val.keys():
             print(k)
             properties = self.dataset[k]['properties']
@@ -680,6 +712,115 @@ class nnUNetTrainer(NetworkTrainer):
             for l in all_labels:
                 global_dice[int(l)] = float(2 * global_tp[l] / (2 * global_tp[l] + global_fn[l] + global_fp[l]))
             write_json(global_dice, join(output_folder, "global_dice.json"))
+
+    def save_attention(self, do_mirroring=True, use_train_mode=False, tiled=True, step=2,
+                 use_gaussian=True, override=True, attention_folder_name='attention'):
+        """
+        2018_12_05: I added global accumulation of TP, FP and FN for the validation in here. This is because I believe
+        that selecting models is easier when computing the Dice globally instead of independently for each case and
+        then averaging over cases. The Lung dataset in particular is very unstable because of the small size of the
+        Lung Lesions. My theory is that even though the global Dice is different than the acutal target metric it is
+        still a good enough substitute that allows us to get a lot more stable results when rerunning the same
+        experiment twice. FYI: computer vision community uses the global jaccard for the evaluation of Cityscapes etc,
+        not the per-image jaccard averaged over images.
+        The reason I am accumulating TP/FP/FN here and not from the nifti files (which are used by our Evaluator) is
+        that all predictions made here will have identical voxel spacing whereas voxel spacings in the nifti files
+        will be different (which we could compensate for by using the volume per voxel but that would require the
+        evaluator to understand spacings which is does not at this point)
+
+        :param do_mirroring:
+        :param use_train_mode:
+        :param mirror_axes:
+        :param tiled:
+        :param tile_in_z:
+        :param step:
+        :param use_nifti:
+        :param save_softmax:
+        :param use_gaussian:
+        :param use_temporal_models:
+        :return:
+        """
+        assert self.was_initialized, "must initialize, ideally with checkpoint (or train first)"
+        if self.dataset_val is None:
+            self.load_dataset()
+            self.do_split()
+
+        output_folder = join(self.output_folder, attention_folder_name)
+        maybe_mkdir_p(output_folder)
+
+        if do_mirroring:
+            mirror_axes = self.data_aug_params['mirror_axes']
+        else:
+            mirror_axes = ()
+
+        pred_gt_tuples = []
+
+        export_pool = Pool(4)
+        results = []
+        global_tp = OrderedDict()
+        global_fp = OrderedDict()
+        global_fn = OrderedDict()
+
+        if 'pancreas_096' in self.dataset_val.keys():
+            del self.dataset_val['pancreas_096']
+        if 'pancreas_043' in self.dataset_val.keys():
+            del self.dataset_val['pancreas_043']
+        for k in self.dataset_val.keys():
+            print(k)
+            properties = self.dataset[k]['properties']
+            fname = properties['list_of_data_files'][0].split("/")[-1][:-12]
+            if override or (not isfile(join(output_folder, fname + ".nii.gz"))):
+                data = np.load(self.dataset[k]['data_file'])['data']
+
+                transpose_forward = self.plans.get('transpose_forward')
+                if transpose_forward is not None:
+                    data = data.transpose([0] + [i+1 for i in transpose_forward])
+
+                print(k, data.shape)
+                data[-1][data[-1] == -1] = 0
+
+                att0, att1 = self.predict_preprocessed_data_return_attention(data[:-1], do_mirroring, 1,
+                                                                             use_train_mode, 1, mirror_axes, tiled,
+                                                                             True, step, self.patch_size,
+                                                                             use_gaussian=use_gaussian)
+                if transpose_forward is not None:
+                    transpose_backward = self.plans.get('transpose_backward')
+                    att0 = att0.transpose([0] + [i+1 for i in transpose_backward])
+                    att1 = att1.transpose([0] + [i+1 for i in transpose_backward])
+
+                """There is a problem with python process communication that prevents us from communicating obejcts 
+                larger than 2 GB between processes (basically when the length of the pickle string that will be sent is 
+                communicated by the multiprocessing.Pipe object then the placeholder (\%i I think) does not allow for long 
+                enough strings (lol). This could be fixed by changing i to l (for long) but that would require manually 
+                patching system python code. We circumvent that problem here by saving softmax_pred to a npy file that will 
+                then be read (and finally deleted) by the Process. save_segmentation_nifti_from_softmax can take either 
+                filename or np.ndarray and will handle this automatically"""
+                if np.prod(att0.shape) > (2e9 / 4 * 0.9): # *0.9 just to be save
+                    np.save(join(output_folder, fname + "_att0.npy"), att0)
+                    np.save(join(output_folder, fname + "_att1.npy"), att1)
+                    att0 = join(output_folder, fname + "_att0.npy")
+                    att1 = join(output_folder, fname + "_att1.npy")
+                # export_pool.starmap_async(save_segmentation_nifti_from_softmax,
+                #                           ((att0, join(output_folder, fname + "_att0.nii.gz"),
+                #                            properties, 3, None, None, None, None, None),
+                #                            )
+                #                           )
+                # #export_pool.starmap_async(save_segmentation_nifti_from_softmax,
+                #                           ((att1, join(output_folder, fname + "_att1.nii.gz"),
+                #                             properties, 3, None, None, None, None, None),
+                #                            )
+                #                           )
+                save_segmentation_nifti_from_softmax(att0, join(output_folder, fname + "_att0.nii.gz"),
+                                                     properties, 3, None, None, None, None, None,
+                                                     save_original_values=True)
+                save_segmentation_nifti_from_softmax(att1, join(output_folder, fname + "_att1.nii.gz"),
+                                                     properties, 3, None, None, None, None, None,
+                                                     save_original_values=True)
+                #save_segmentation_nifti_from_softmax(softmax_pred, join(output_folder, fname + ".nii.gz"),
+                #                                               properties, 3, None, None,
+                #                                               None,
+                #                                               softmax_fname,
+                #                                               None)
 
     def run_online_evaluation(self, output, target):
         with torch.no_grad():
