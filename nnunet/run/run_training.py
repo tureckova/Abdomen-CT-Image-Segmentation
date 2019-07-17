@@ -52,8 +52,11 @@ if __name__ == "__main__":
                                                                           "if organ uses only label marked as 1,"
                                                                           "if tumor uses only label marked as 2,"
                                                                           "if both unites label 1 and 2 into one label")
+    parser.add_argument("--vnet", required=False, default=1, type=int,
+                        help="If 1 uses convolutional pooling and upsampling, if 0 uses maxpooling and upsampling")
     parser.add_argument("--init_model", required=False, default=None, help="Path to trained model which will be used to initialize weights of the network before training")
     parser.add_argument("--freeze_ag", required=False, default=False, help="If True the weights in Attention gates in model will be freezed")
+    parser.add_argument("--save_attention_map", required=False, default=False, help="if True, saves attention maps for each image into separate folder")
 
     args = parser.parse_args()
 
@@ -69,6 +72,9 @@ if __name__ == "__main__":
     valbest = args.valbest
     fp16 = args.fp16
     use_label = args.use_label
+    save_attention_map = args.save_attention_map
+    vnet = args.vnet
+    print('vnet: ', vnet)
 
     if unpack == 0:
         unpack = False
@@ -76,6 +82,13 @@ if __name__ == "__main__":
         unpack = True
     else:
         raise ValueError("Unexpected value for -u/--unpack_data: %s. Use 1 or 0." % str(unpack))
+
+    if vnet == 0:
+        vnet = False
+    elif vnet == 1:
+        vnet == True
+    else:
+        raise ValueError("Unexpected value for --vnet %s. Use 1 or 0." % str(vnet))
 
     if fold == 'all':
         pass
@@ -97,7 +110,7 @@ if __name__ == "__main__":
 
     trainer = trainer_class(plans_file, fold, output_folder=output_folder_name, dataset_directory=dataset_directory,
                             batch_dice=batch_dice, stage=stage, unpack_data=unpack, deterministic=deterministic,
-                            fp16=fp16, use_label=use_label)
+                            fp16=fp16, use_label=use_label, vnet=vnet)
 
     trainer.initialize(not validation_only)
 
@@ -124,7 +137,8 @@ if __name__ == "__main__":
             val_folder = "validation"
 
         # predict validation
-        #trainer.save_attention(override=True)
+        if save_attention_map:
+            trainer.save_attention(override=True)
         trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder, override=False)
 
         # if network == '3d_lowres':

@@ -194,7 +194,7 @@ class SegmentationNetwork(NeuralNetwork):
             else:
                 result_torch = result_torch.cuda(self.get_device())
             if self.save_attention:
-                result_att0 = torch.zeros([1, 1] + [x.shape[2]] + [int(x.shape[3]/2)] + [int(x.shape[4]/2)]).float()
+                result_att0 = torch.zeros([1, 1] + [int(x.shape[2]/2)] + [int(x.shape[3]/2)] + [int(x.shape[4])]).float()
                 result_att1 = torch.zeros([1, 1] + list(x.shape[2:])).float()
                 if self.get_device() == "cpu":
                     result_att0 = result_att0.cpu()

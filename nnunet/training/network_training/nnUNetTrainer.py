@@ -25,7 +25,7 @@ import nibabel as nib
 
 class nnUNetTrainer(NetworkTrainer):
     def __init__(self, plans_file, fold, output_folder=None, dataset_directory=None, batch_dice=True, stage=None,
-                 unpack_data=True, deterministic=True, fp16=False, use_label=None):
+                 unpack_data=True, deterministic=True, fp16=False, use_label=None, vnet=True):
         """
         :param deterministic:
         :param fold: can be either [0 ... 5) for cross-validation, 'all' to train on all available training data or
@@ -84,6 +84,7 @@ class nnUNetTrainer(NetworkTrainer):
 
         self.batch_dice = batch_dice
         self.use_label = use_label
+        self.vnet = vnet
         self.loss = DC_and_CE_loss({'batch_dice': self.batch_dice, 'smooth': 1e-5, 'smooth_in_nom': True,
                                     'do_bg': False, 'rebalance_weights': None, 'background_weight': 1}, OrderedDict(),
                                    use_label=use_label)
@@ -232,7 +233,7 @@ class nnUNetTrainer(NetworkTrainer):
         self.network = Generic_UNet(self.num_input_channels, self.base_num_features, self.num_classes, net_numpool,
                                     2, 2, conv_op, norm_op, norm_op_kwargs, dropout_op, dropout_op_kwargs,
                                     net_nonlin, net_nonlin_kwargs, False, False, lambda x: x, InitWeights_He(1e-2),
-                                    self.net_num_pool_op_kernel_sizes, self.net_conv_kernel_sizes, False, True, True)
+                                    self.net_num_pool_op_kernel_sizes, self.net_conv_kernel_sizes, False, self.vnet, self.vnet)
         self.optimizer = torch.optim.Adam(self.network.parameters(), self.initial_lr, weight_decay=self.weight_decay, amsgrad=True)
         self.lr_scheduler = lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.2, patience=self.lr_scheduler_patience,
                                                            verbose=True, threshold=self.lr_scheduler_eps, threshold_mode="abs")
@@ -783,39 +784,46 @@ class nnUNetTrainer(NetworkTrainer):
                                                                              use_train_mode, 1, mirror_axes, tiled,
                                                                              True, step, self.patch_size,
                                                                              use_gaussian=use_gaussian)
-                if transpose_forward is not None:
-                    transpose_backward = self.plans.get('transpose_backward')
-                    att0 = att0.transpose([0] + [i+1 for i in transpose_backward])
-                    att1 = att1.transpose([0] + [i+1 for i in transpose_backward])
-
-                """There is a problem with python process communication that prevents us from communicating obejcts 
-                larger than 2 GB between processes (basically when the length of the pickle string that will be sent is 
-                communicated by the multiprocessing.Pipe object then the placeholder (\%i I think) does not allow for long 
-                enough strings (lol). This could be fixed by changing i to l (for long) but that would require manually 
-                patching system python code. We circumvent that problem here by saving softmax_pred to a npy file that will 
-                then be read (and finally deleted) by the Process. save_segmentation_nifti_from_softmax can take either 
-                filename or np.ndarray and will handle this automatically"""
-                if np.prod(att0.shape) > (2e9 / 4 * 0.9): # *0.9 just to be save
-                    np.save(join(output_folder, fname + "_att0.npy"), att0)
-                    np.save(join(output_folder, fname + "_att1.npy"), att1)
-                    att0 = join(output_folder, fname + "_att0.npy")
-                    att1 = join(output_folder, fname + "_att1.npy")
-                # export_pool.starmap_async(save_segmentation_nifti_from_softmax,
-                #                           ((att0, join(output_folder, fname + "_att0.nii.gz"),
-                #                            properties, 3, None, None, None, None, None),
-                #                            )
-                #                           )
-                # #export_pool.starmap_async(save_segmentation_nifti_from_softmax,
-                #                           ((att1, join(output_folder, fname + "_att1.nii.gz"),
-                #                             properties, 3, None, None, None, None, None),
-                #                            )
-                #                           )
-                save_segmentation_nifti_from_softmax(att0, join(output_folder, fname + "_att0.nii.gz"),
-                                                     properties, 3, None, None, None, None, None,
-                                                     save_original_values=True)
-                save_segmentation_nifti_from_softmax(att1, join(output_folder, fname + "_att1.nii.gz"),
-                                                     properties, 3, None, None, None, None, None,
-                                                     save_original_values=True)
+                np.save(join(output_folder, fname + "_att0.npy"), att0)
+                np.save(join(output_folder, fname + "_att1.npy"), att1)
+                np.save(join(output_folder, fname + "_org.npy"), data[:-1])
+                print("npy files saved")
+                # if transpose_forward is not None:
+                #     transpose_backward = self.plans.get('transpose_backward')
+                #     att0 = att0.transpose([0] + [i+1 for i in transpose_backward])
+                #     att1 = att1.transpose([0] + [i+1 for i in transpose_backward])
+                #
+                # """There is a problem with python process communication that prevents us from communicating obejcts
+                # larger than 2 GB between processes (basically when the length of the pickle string that will be sent is
+                # communicated by the multiprocessing.Pipe object then the placeholder (\%i I think) does not allow for long
+                # enough strings (lol). This could be fixed by changing i to l (for long) but that would require manually
+                # patching system python code. We circumvent that problem here by saving softmax_pred to a npy file that will
+                # then be read (and finally deleted) by the Process. save_segmentation_nifti_from_softmax can take either
+                # filename or np.ndarray and will handle this automatically"""
+                # if np.prod(att0.shape) > (2e9 / 4 * 0.9): # *0.9 just to be save
+                #     np.save(join(output_folder, fname + "_att0.npy"), att0)
+                #     np.save(join(output_folder, fname + "_att1.npy"), att1)
+                #     att0 = join(output_folder, fname + "_att0.npy")
+                #     att1 = join(output_folder, fname + "_att1.npy")
+                # # export_pool.starmap_async(save_segmentation_nifti_from_softmax,
+                # #                           ((att0, join(output_folder, fname + "_att0.nii.gz"),
+                # #                            properties, 3, None, None, None, None, None),
+                # #                            )
+                # #                           )
+                # # #export_pool.starmap_async(save_segmentation_nifti_from_softmax,
+                # #                           ((att1, join(output_folder, fname + "_att1.nii.gz"),
+                # #                             properties, 3, None, None, None, None, None),
+                # #                            )
+                # #                           )
+                # save_segmentation_nifti_from_softmax(att0, join(output_folder, fname + "_att0.nii.gz"),
+                #                                      properties, 3, None, None, None, None, None,
+                #                                      save_original_values=True)
+                # save_segmentation_nifti_from_softmax(att1, join(output_folder, fname + "_att1.nii.gz"),
+                #                                      properties, 3, None, None, None, None, None,
+                #                                      save_original_values=True)
+                # save_segmentation_nifti_from_softmax(data[:-1], join(output_folder, fname + "_org.nii.gz"),
+                #                                      properties, 3, None, None, None, None, None,
+                #                                      save_original_values=True)
                 #save_segmentation_nifti_from_softmax(softmax_pred, join(output_folder, fname + ".nii.gz"),
                 #                                               properties, 3, None, None,
                 #                                               None,

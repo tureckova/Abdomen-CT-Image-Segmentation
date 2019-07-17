@@ -33,7 +33,7 @@ def convert_to_submission(source_dir, target_dir):
 
 if __name__ == "__main__":
     folder = "/home/tureckova/Pictures/kits19/data"
-    folder_test = "/media/fabian/My Book/datasets/ACDC/testing/testing"
+    folder_test = "/home/tureckova/Pictures/kits19/test"
     out_folder = "/home/tureckova/Pictures/nnUNet/nnUNet_base/nnUNet_raw_splitted/KiTS2019"
 
     maybe_mkdir_p(join(out_folder, "imagesTr"))
@@ -48,19 +48,17 @@ if __name__ == "__main__":
         seg_file = current_dir + "/segmentation.nii.gz"
         patient_identifier = "KiTS2019_" + current_dir[-3:]
         all_train_files.append(patient_identifier + "_0000.nii.gz")
-        shutil.copy(data_file_train, join(out_folder, "imagesTr", patient_identifier + "_0000.nii.gz"))
-        shutil.copy(seg_file, join(out_folder, "labelsTr", patient_identifier + ".nii.gz"))
+        #shutil.copy(data_file_train, join(out_folder, "imagesTr", patient_identifier + "_0000.nii.gz"))
+        #shutil.copy(seg_file, join(out_folder, "labelsTr", patient_identifier + ".nii.gz"))
 
     # test
-    # all_test_files = []
-    # patient_dirs_test = subfolders(folder_test, prefix="patient")
-    # for p in patient_dirs_test:
-    #     current_dir = p
-    #     data_files_test = [i for i in subfiles(current_dir, suffix=".nii.gz") if i.find("_gt") == -1 and i.find("_4d") == -1]
-    #     for d in data_files_test:
-    #         patient_identifier = d.split("/")[-1][:-7]
-    #         all_test_files.append(patient_identifier + "_0000.nii.gz")
-    #         shutil.copy(d, join(out_folder, "imagesTs", patient_identifier + "_0000.nii.gz"))
+    all_test_files = []
+    patient_dirs_test = subfolders(folder_test, prefix="case")
+    for current_dir in patient_dirs_test:
+        data_file_train = current_dir + "/imaging.nii.gz"
+        patient_identifier = "KiTS2019_" + current_dir[-3:]
+        all_test_files.append(patient_identifier + "_0000.nii.gz")
+        #shutil.copy(data_file_train, join(out_folder, "imagesTs", patient_identifier + "_0000.nii.gz"))
 
 
     json_dict = OrderedDict()
@@ -82,6 +80,6 @@ if __name__ == "__main__":
     json_dict['numTest'] = 0 #len(all_test_files)
     json_dict['training'] = [{'image': "./imagesTr/%s.nii.gz" % i.split("/")[-1][:-12], "label": "./labelsTr/%s.nii.gz" % i.split("/")[-1][:-12]} for i in
                              all_train_files]
-    json_dict['test'] = []#["./imagesTs/%s.nii.gz" % i.split("/")[-1][:-12] for i in all_test_files]
+    json_dict['test'] = ["./imagesTs/%s.nii.gz" % i.split("/")[-1][:-12] for i in all_test_files]
 
     save_json(json_dict, os.path.join(out_folder, "dataset.json"))
