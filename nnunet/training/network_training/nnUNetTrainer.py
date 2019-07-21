@@ -413,6 +413,32 @@ class nnUNetTrainer(NetworkTrainer):
         return res[4], res[5]
 
 
+    def predict_preprocessed_data_return_ds(self, data, do_mirroring, num_repeats, use_train_mode, batch_size,
+                                                 mirror_axes, tiled, tile_in_z, step, min_size, use_gaussian):
+        """
+        Don't use this. If you need softmax output, use preprocess_predict_nifti and set softmax_output_file.
+        :param data:
+        :param do_mirroring:
+        :param num_repeats:
+        :param use_train_mode:
+        :param batch_size:
+        :param mirror_axes:
+        :param tiled:
+        :param tile_in_z:
+        :param step:
+        :param min_size:
+        :param use_gaussian:
+        :param use_temporal:
+        :return:
+        """
+        assert isinstance(self.network, (SegmentationNetwork, nn.DataParallel))
+        res = self.network.predict_3D_ds(data, do_mirroring, num_repeats, use_train_mode, batch_size, mirror_axes,
+                                       tiled, tile_in_z, step, min_size, use_gaussian=use_gaussian,
+                                       pad_border_mode=self.inference_pad_border_mode,
+                                       pad_kwargs=self.inference_pad_kwargs)
+        return res[-1]
+        
+    
     def validate_nifti(self, do_mirroring=True, use_train_mode=False, tiled=True, step=2, save_softmax=True,
                  use_gaussian=True, compute_global_dice=True, override=True, validation_folder_name='validation'):
         """
@@ -717,18 +743,6 @@ class nnUNetTrainer(NetworkTrainer):
     def save_attention(self, do_mirroring=True, use_train_mode=False, tiled=True, step=2,
                  use_gaussian=True, override=True, attention_folder_name='attention'):
         """
-        2018_12_05: I added global accumulation of TP, FP and FN for the validation in here. This is because I believe
-        that selecting models is easier when computing the Dice globally instead of independently for each case and
-        then averaging over cases. The Lung dataset in particular is very unstable because of the small size of the
-        Lung Lesions. My theory is that even though the global Dice is different than the acutal target metric it is
-        still a good enough substitute that allows us to get a lot more stable results when rerunning the same
-        experiment twice. FYI: computer vision community uses the global jaccard for the evaluation of Cityscapes etc,
-        not the per-image jaccard averaged over images.
-        The reason I am accumulating TP/FP/FN here and not from the nifti files (which are used by our Evaluator) is
-        that all predictions made here will have identical voxel spacing whereas voxel spacings in the nifti files
-        will be different (which we could compensate for by using the volume per voxel but that would require the
-        evaluator to understand spacings which is does not at this point)
-
         :param do_mirroring:
         :param use_train_mode:
         :param mirror_axes:
@@ -830,6 +844,55 @@ class nnUNetTrainer(NetworkTrainer):
                 #                                               softmax_fname,
                 #                                               None)
 
+    def save_ds(self, do_mirroring=True, use_train_mode=False, tiled=True, step=2,
+                 use_gaussian=True, override=True, folder_name='ds'):
+
+        assert self.was_initialized, "must initialize, ideally with checkpoint (or train first)"
+        if self.dataset_val is None:
+            self.load_dataset()
+            self.do_split()
+
+        output_folder = join(self.output_folder, attention_folder_name)
+        maybe_mkdir_p(output_folder)
+
+        if do_mirroring:
+            mirror_axes = self.data_aug_params['mirror_axes']
+        else:
+            mirror_axes = ()
+
+        pred_gt_tuples = []
+
+        export_pool = Pool(4)
+        results = []
+        global_tp = OrderedDict()
+        global_fp = OrderedDict()
+        global_fn = OrderedDict()
+
+        if 'pancreas_096' in self.dataset_val.keys():
+            del self.dataset_val['pancreas_096']
+        if 'pancreas_043' in self.dataset_val.keys():
+            del self.dataset_val['pancreas_043']
+        for k in self.dataset_val.keys():
+            print(k)
+            properties = self.dataset[k]['properties']
+            fname = properties['list_of_data_files'][0].split("/")[-1][:-12]
+            if override or (not isfile(join(output_folder, fname + ".nii.gz"))):
+                data = np.load(self.dataset[k]['data_file'])['data']
+
+                transpose_forward = self.plans.get('transpose_forward')
+                if transpose_forward is not None:
+                    data = data.transpose([0] + [i+1 for i in transpose_forward])
+
+                print(k, data.shape)
+                data[-1][data[-1] == -1] = 0
+
+                ds = self.predict_preprocessed_data_return_attention(data[:-1], do_mirroring, 1,
+                                                                             use_train_mode, 1, mirror_axes, tiled,
+                                                                             True, step, self.patch_size,
+                                                                             use_gaussian=use_gaussian)
+                np.save(join(output_folder, fname + "_ds.npy"), ds)
+                np.save(join(output_folder, fname + "_org.npy"), data[:-1])
+    
     def run_online_evaluation(self, output, target):
         with torch.no_grad():
             num_classes = output.shape[1]

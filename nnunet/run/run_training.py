@@ -57,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("--init_model", required=False, default=None, help="Path to trained model which will be used to initialize weights of the network before training")
     parser.add_argument("--freeze_ag", required=False, default=False, help="If True the weights in Attention gates in model will be freezed")
     parser.add_argument("--save_attention_map", required=False, default=False, help="if True, saves attention maps for each image into separate folder")
+    parser.add_argument("--save_ds_map", required=False, default=False, help="if True, saves deep supervision maps for each image into separate folder")
 
     args = parser.parse_args()
 
@@ -73,6 +74,7 @@ if __name__ == "__main__":
     fp16 = args.fp16
     use_label = args.use_label
     save_attention_map = args.save_attention_map
+    save_ds_map = args.save_ds_map
     vnet = args.vnet
     print('vnet: ', vnet)
 
@@ -139,6 +141,8 @@ if __name__ == "__main__":
         # predict validation
         if save_attention_map:
             trainer.save_attention(override=True)
+        if save_ds_map:
+			trainer.save_ds(override=True)
         trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder, override=False)
 
         # if network == '3d_lowres':
