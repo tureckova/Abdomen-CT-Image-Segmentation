@@ -240,15 +240,6 @@ class SegmentationNetwork(NeuralNetwork):
                 result_torch = result_torch.cpu()
             else:
                 result_torch = result_torch.cuda(self.get_device())
-            if self.save_attention:
-                result_att0 = torch.zeros([1, 1] + [int(x.shape[2]/2)] + [int(x.shape[3]/2)] + [int(x.shape[4])]).float()
-                result_att1 = torch.zeros([1, 1] + list(x.shape[2:])).float()
-                if self.get_device() == "cpu":
-                    result_att0 = result_att0.cpu()
-                    result_att1 = result_att1.cpu()
-                else:
-                    result_att0 = result_att0.cuda(self.get_device())
-                    result_att1 = result_att1.cuda(self.get_device())
 
             axes_to_flip = [i + 2 for i in mirror_axes]
             #print("axes_to_flip: {}".format(axes_to_flip))
@@ -258,44 +249,20 @@ class SegmentationNetwork(NeuralNetwork):
                 for j in combinations(axes_to_flip, i + 1):
                     axes.append(j)
 
-            # prepare feature hook if we want to visualize attention
-            if self.save_attention:
-                layer_name = 'ag'
-                feature_extractor_ag0 = HookBasedFeatureExtractor(self, layer_name, 0, upscale=False)
-                feature_extractor_ag1 = HookBasedFeatureExtractor(self, layer_name, 1, upscale=False)
-
             # predict mirrored version of image
             for ax in axes:
                 pred = self.inference_apply_nonlin(self(torch.flip(x_torch, dims=ax)))
                 result_torch += torch.flip(pred, dims=ax)
-                if self.save_attention:
-                    inp_fmap, out_fmap0 = feature_extractor_ag0.forward(Variable(x_torch))
-                    result_att0 += out_fmap0[1]
-                    inp_fmap, out_fmap1 = feature_extractor_ag1.forward(Variable(x_torch))
-                    result_att1 += out_fmap1[1]
 
             result_torch /= len(axes) + 1
-            if self.save_attention:
-                result_att0 /= len(axes) + 1
-                # upscale result_att1
-                result_att0_big = nn.functional.interpolate(result_att0, size=tuple(result_att1.shape[2:]))
-                result_att1 /= len(axes) + 1
 
         if mult is not None:
             result_torch[:, :] *= mult
-            if self.save_attention:
-                result_att0_big[:, :] *= mult
-                result_att1[:, :] *= mult
 
-        if self.save_attention:
-            return result_torch.detach().cpu().numpy(),\
-                   result_att0_big.detach().cpu().numpy(),\
-                   result_att1.detach().cpu().numpy()
-        else:
-            return result_torch.detach().cpu().numpy()
+        return result_torch.detach().cpu().numpy()
 
 
-        def _internal_maybe_mirror_and_pred_3D_more(self, x, num_repeats, mirror_axes, do_mirroring=True, mult=None):
+    def _internal_maybe_mirror_and_pred_3D_more(self, x, num_repeats, mirror_axes, do_mirroring=True, mult=None):
         with torch.no_grad():
             x_torch = torch.from_numpy(x).float()
             if self.get_device() == "cpu":
@@ -318,11 +285,11 @@ class SegmentationNetwork(NeuralNetwork):
                     result_att0 = result_att0.cuda(self.get_device())
                     result_att1 = result_att1.cuda(self.get_device())
             if self.ds:
-				result_ds0 = torch.zeros([1, 1] + [int(x.shape[2]/2)] + [int(x.shape[3]/2)] + [int(x.shape[4])]).float()
-				if self.get_device() == "cpu":
-					result_ds0 = result_ds0.cpu()
-			    else:
-					result_ds0 = result_ds0.cuda(self.get_device())
+                    result_ds0 = torch.zeros([1, 3] + [int(x.shape[2])] + [int(x.shape[3])] + [int(x.shape[4])]).float()
+                    if self.get_device() == "cpu":
+                        result_ds0 = result_ds0.cpu()
+                    else:
+                        result_ds0 = result_ds0.cuda(self.get_device())
             
             axes_to_flip = [i + 2 for i in mirror_axes]
             #print("axes_to_flip: {}".format(axes_to_flip))
@@ -341,7 +308,7 @@ class SegmentationNetwork(NeuralNetwork):
             # prepare feature hook if we want to visualize ds
             if self.ds:
                 layer_name = 'seg_outputs'
-                feature_extractor_ds0 = HookBasedFeatureExtractor(self, layer_name, 0, upscale=False)
+                feature_extractor_ds0 = HookBasedFeatureExtractor(self, layer_name, 4, upscale=False)
                 
             # predict mirrored version of image
             for ax in axes:
@@ -353,8 +320,10 @@ class SegmentationNetwork(NeuralNetwork):
                     inp_fmap, out_fmap1 = feature_extractor_ag1.forward(Variable(x_torch))
                     result_att1 += out_fmap1[1]
                 if self.ds:
-					res_ds0 = feature_extractor_ds0.forward(Variable(x_torch))
-					result_ds0 += res_ds0
+                    inp_fmap, res_ds0 = feature_extractor_ds0.forward(Variable(x_torch))
+                    print('res_ds0 return from net shape: ', res_ds0.shape)
+                    print('it shuld have: ', result_ds0.shape)
+                    result_ds0 += res_ds0
 
             result_torch /= len(axes) + 1
             if self.save_attention:
@@ -363,22 +332,24 @@ class SegmentationNetwork(NeuralNetwork):
                 result_att0_big = nn.functional.interpolate(result_att0, size=tuple(result_att1.shape[2:]))
                 result_att1 /= len(axes) + 1
             if self.ds:
-				result_ds0 /= len(axes) + 1
+                result_ds0 /= len(axes) + 1
+                result_ds0_big = nn.functional.interpolate(result_ds0, size=tuple(result_torch.shape[2:]))
+                print('Shape after interpolation: ', result_ds0_big.shape)
 
         if mult is not None:
             result_torch[:, :] *= mult
             if self.save_attention:
                 result_att0_big[:, :] *= mult
                 result_att1[:, :] *= mult
-            if seld.ds:
-				result_ds0[:,:] *= mult
+            if self.ds:
+                result_ds0_big[:,:] *= mult
 
         output = [result_torch.detach().cpu().numpy()]
         if self.save_attention:
-			output.append(result_att0_big.detach().cpu().numpy())
-			output.append(result_att1.detach().cpu().numpy())
+            output.append(result_att0_big.detach().cpu().numpy())
+            output.append(result_att1.detach().cpu().numpy())
         if self.ds:
-			output.append(result_ds0.detach().cpu().numpy())
+            output.append(result_ds0_big.detach().cpu().numpy())
         return output
             
     
@@ -570,7 +541,7 @@ class SegmentationNetwork(NeuralNetwork):
                 result_att0 = np.zeros([nb_of_classes] + list(data.shape[2:]), dtype=np.float32)
                 result_att1 = np.zeros([nb_of_classes] + list(data.shape[2:]), dtype=np.float32)
             if self.ds:
-				result_d0 = np.zeros([nb_of_classes] + list(data.shape[2:]), dtype=np.float32)
+                result_ds0 = np.zeros([nb_of_classes] + list(data.shape[2:]), dtype=np.float32)
 				
             result_numsamples = np.zeros([nb_of_classes] + list(data.shape[2:]), dtype=np.float32)
             if use_gaussian:
@@ -609,7 +580,7 @@ class SegmentationNetwork(NeuralNetwork):
                         lb_z = z - patch_size[2] // 2
                         ub_z = z + patch_size[2] // 2
                         if self.save_attention:
-                            res, att0, att1 = self._internal_maybe_mirror_and_pred_3D(data[:, :, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z],
+                            res, att0, att1 = self._internal_maybe_mirror_and_pred_3D_more(data[:, :, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z],
                                                                         num_repeats, mirror_axes, do_mirroring,
                                                                         add_torch)
                             result[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z]+= res[0]
@@ -617,7 +588,7 @@ class SegmentationNetwork(NeuralNetwork):
                             result_att1[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z]+= att1[0]
                             result_numsamples[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z] += add
                         if self.ds:
-							res, ds0 = self._internal_maybe_mirror_and_pred_3D(data[:, :, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z],
+                            res, ds0 = self._internal_maybe_mirror_and_pred_3D_more(data[:, :, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z],
                                                                         num_repeats, mirror_axes, do_mirroring,
                                                                         add_torch)
                             result[:, lb_x:ub_x, lb_y:ub_y, lb_z:ub_z]+= res[0]
@@ -642,8 +613,8 @@ class SegmentationNetwork(NeuralNetwork):
                 att0 = result_att0 / result_numsamples
                 att1 = result_att1 / result_numsamples
             if self.ds:
-				result_ds0 = result_ds0[slicer]
-				ds0 = result_ds0 / result_numsamples
+                result_ds0 = result_ds0[slicer]
+                ds0 = result_ds0 / result_numsamples
 
             # patient_data = patient_data[:, :old_shape[0], :old_shape[1], :old_shape[2]]
             if regions_class_order is None:
@@ -653,12 +624,13 @@ class SegmentationNetwork(NeuralNetwork):
                 predicted_segmentation = np.zeros(predicted_segmentation_shp, dtype=np.float32)
                 for i, c in enumerate(regions_class_order):
                     predicted_segmentation[softmax_pred[i] > 0.5] = c
+        
         output = [predicted_segmentation, None, softmax_pred, None]
         if self.save_attention:
-			output.append(att0)
-			output.append(att1)
-		if self.ds:
-			output.append(ds0)
+            output.append(att0)
+            output.append(att1)
+        if self.ds:
+            output.append(ds0)
         
         return output
            

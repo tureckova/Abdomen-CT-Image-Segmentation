@@ -142,7 +142,7 @@ if __name__ == "__main__":
         if save_attention_map:
             trainer.save_attention(override=True)
         if save_ds_map:
-			trainer.save_ds(override=True)
+            trainer.save_ds(override=True)
         trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder, override=False)
 
         # if network == '3d_lowres':

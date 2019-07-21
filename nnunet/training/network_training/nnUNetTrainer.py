@@ -562,11 +562,6 @@ class nnUNetTrainer(NetworkTrainer):
                                                           )
                                                          )
                                )
-                #save_segmentation_nifti_from_softmax(softmax_pred, join(output_folder, fname + ".nii.gz"),
-                #                                               properties, 3, None, None,
-                #                                               None,
-                #                                               softmax_fname,
-                #                                               None)
 
             pred_gt_tuples.append([join(output_folder, fname + ".nii.gz"),
                                    join(self.gt_niftis_folder, fname + ".nii.gz")])
@@ -852,7 +847,7 @@ class nnUNetTrainer(NetworkTrainer):
             self.load_dataset()
             self.do_split()
 
-        output_folder = join(self.output_folder, attention_folder_name)
+        output_folder = join(self.output_folder, folder_name)
         maybe_mkdir_p(output_folder)
 
         if do_mirroring:
@@ -886,10 +881,12 @@ class nnUNetTrainer(NetworkTrainer):
                 print(k, data.shape)
                 data[-1][data[-1] == -1] = 0
 
-                ds = self.predict_preprocessed_data_return_attention(data[:-1], do_mirroring, 1,
+                ds = self.predict_preprocessed_data_return_ds(data[:-1], do_mirroring, 1,
                                                                              use_train_mode, 1, mirror_axes, tiled,
                                                                              True, step, self.patch_size,
                                                                              use_gaussian=use_gaussian)
+                print('************************')
+                print('final ds shape: ', ds.shape)
                 np.save(join(output_folder, fname + "_ds.npy"), ds)
                 np.save(join(output_folder, fname + "_org.npy"), data[:-1])
     
