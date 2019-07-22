@@ -22,6 +22,7 @@ from scipy.ndimage.filters import gaussian_filter
 from itertools import combinations
 from .visualize_attention import HookBasedFeatureExtractor
 from torch.autograd import Variable
+from nnunet.utilities.nd_softmax import softmax_helper
 
 
 class NeuralNetwork(nn.Module):
@@ -285,7 +286,7 @@ class SegmentationNetwork(NeuralNetwork):
                     result_att0 = result_att0.cuda(self.get_device())
                     result_att1 = result_att1.cuda(self.get_device())
             if self.ds:
-                    result_ds0 = torch.zeros([1, 3] + [int(x.shape[2])] + [int(x.shape[3])] + [int(x.shape[4])]).float()
+                    result_ds0 = torch.zeros([1, 3] + [int(x.shape[2]/4)] + [int(x.shape[3]/16)] + [int(x.shape[4]/16)]).float()
                     if self.get_device() == "cpu":
                         result_ds0 = result_ds0.cpu()
                     else:
@@ -308,7 +309,7 @@ class SegmentationNetwork(NeuralNetwork):
             # prepare feature hook if we want to visualize ds
             if self.ds:
                 layer_name = 'seg_outputs'
-                feature_extractor_ds0 = HookBasedFeatureExtractor(self, layer_name, 4, upscale=False)
+                feature_extractor_ds0 = HookBasedFeatureExtractor(self, layer_name, 0, upscale=False)
                 
             # predict mirrored version of image
             for ax in axes:
@@ -323,7 +324,7 @@ class SegmentationNetwork(NeuralNetwork):
                     inp_fmap, res_ds0 = feature_extractor_ds0.forward(Variable(x_torch))
                     print('res_ds0 return from net shape: ', res_ds0.shape)
                     print('it shuld have: ', result_ds0.shape)
-                    result_ds0 += res_ds0
+                    result_ds0 += softmax_helper(res_ds0)
 
             result_torch /= len(axes) + 1
             if self.save_attention:
