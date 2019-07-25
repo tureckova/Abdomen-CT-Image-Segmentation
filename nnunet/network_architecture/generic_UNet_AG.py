@@ -495,6 +495,13 @@ if __name__ == '__main__':
     print("Train iterration took: {}".format(t2-t1))
     print("preds shape: {}".format(preds[0].shape))
 
+    params = sum([np.prod(p.size()) for p in model.parameters()])
+    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    trainable_params = sum([np.prod(p.size()) for p in model_parameters])
+    print("Parameters: {}".format(params))
+    print("Trainable parameters: {}".format(trainable_params))
+
+
     #try eval
     print("***Try evaluation***")
     model.eval()
