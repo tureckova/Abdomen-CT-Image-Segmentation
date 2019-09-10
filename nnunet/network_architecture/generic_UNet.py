@@ -415,6 +415,12 @@ class Generic_UNet(SegmentationNetwork):
         return tmp
 
 
+def time_train_iteration(model, inputs):
+    t1 = time.time()
+    preds = model(inputs)
+    t2 = time.time()
+    return t2-t1
+
 if __name__ == '__main__':
     from torch.optim import lr_scheduler
     import time
@@ -424,23 +430,26 @@ if __name__ == '__main__':
                          dropout_op=nn.Dropout3d, dropout_op_kwargs=None,
                          nonlin=nn.LeakyReLU, nonlin_kwargs=None, deep_supervision=True, dropout_in_localization=False,
                          final_nonlin=softmax_helper, weightInitializer=InitWeights_He(1e-2),
-                         pool_op_kernel_sizes=[[1, 2, 2], [1, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]],
+                         pool_op_kernel_sizes=[[1, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]],
                          conv_kernel_sizes=[[3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3]],
                          upscale_logits=False, convolutional_pooling=True, convolutional_upsampling=True)
     model.cuda()
-    inputs = torch.zeros([2, 1, 64, 64, 64]).cuda(non_blocking=True)
+    inputs = torch.zeros([2, 1, 64, 128, 128]).cuda()
     optimizer = torch.optim.Adam(model.parameters(), 3e-4, weight_decay=3e-5, amsgrad=True)
     lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=30,
                                                            verbose=True, threshold=1e-3, threshold_mode="abs")
 
-    #try train itteration
+    # try train itteration
     print("***Try training***")
-    t1 = time.time()
     model.train()
-    preds = model(inputs)
+    rep = 100
+    t1 = time.time()
+    t = 0
+    for i in range(rep):
+        t += time_train_iteration(model, inputs)
     t2 = time.time()
-    print("Train iterration took: {}".format(t2-t1))
-    print("preds shape: {}".format(preds[0].shape))
+    print("Train iterration took: {}".format((t) / rep))
+    # print("preds shape: {}".format(preds[0].shape))
 
     params = sum([np.prod(p.size()) for p in model.parameters()])
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -448,13 +457,14 @@ if __name__ == '__main__':
     print("Parameters: {}".format(params))
     print("Trainable parameters: {}".format(trainable_params))
 
-
-    #try eval
+    # try eval
     print("***Try evaluation***")
     model.eval()
-    t1 = time.time()
     with torch.no_grad():
-        preds = model(inputs)
+        t1 = time.time()
+        t = 0
+        for i in range(rep):
+            t += time_train_iteration(model, inputs)
     t2 = time.time()
-    print("Eval iterration took: {}".format(t2 - t1))
-    print("preds shape: {}".format(preds[0].shape))
+    print("Eval iterration took: {}".format((t) / rep))
+    # print("preds shape: {}".format(preds[0].shape))
