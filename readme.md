@@ -1,44 +1,33 @@
 # Introduction 
 
-nnU-Net is a framework designed for medical image segmentation. Given a new dataset (that includes training cases) nnU-Net
-will automatically take care of the entire experimental pipeline.
-Unlike other segmentation methods published recently, nnU-Net does not use complicated architectural modifications and 
-instead revolves around the popular U-Net architecture. Still, nnU-Net outperforms many other methods and has been 
-shown to produce segmentations that are on par with or even exceed the state-of-the art across six well-known medical 
-segmentation challenges.
+This framework designed for medical image segmentation. It uses the ushaped deep CNN architecture (VNet or UNet) extended by attention gates. For more information about the method, please read the following paper:
 
-For more information about nnU-Net, please read the following paper:
+`The paper describing the method is still under the review.`
 
-`Isensee, Fabian, et al. "nnU-Net: Breaking the Spell on Successful Medical Image Segmentation." arXiv preprint arXiv:1904.08128 (2019).`
-
-Please also cite this paper if you are using nnU-Net for your research!
-
-Please note that so far nnU-Net has only been used internally. Tha vast majority of nnU-Net was developed in the context of 
-the Medical Segmentation Decathlon and was thus created with a very tight time schedule, so expect things to be a 
-little messy the deeper you dig.  
+Please also cite this paper if you are using this code for your research!
 
 This repository is still work in progress. Things may break. If that is the case, please let us know.
+The code was wastly inspired by the nnU-Net framework authored by Fabian Isensee, so in case of troubles you may want to study this repository and its describtion, too: https://github.com/MIC-DKFZ/nnUNet/tree/master/nnunet.
 
 # Installation 
-nnU-Net is only tested on Linux (Ubuntu). It may work on other operating systems as well but we do not guarantee it will.
+The instalation is only tested on Linux (Ubuntu). It may work on other operating systems as well but we do not guarantee it will.
 
 Installation instructions
 1) Install PyTorch (https://pytorch.org/get-started/locally/)
-2) Clone this repository `git clone https://github.com/MIC-DKFZ/nnUNet.git`
+2) Clone this repository `git clone https://github.com/tureckova/Abdomen-CT-Image-Segmentation`
 3) Go into the repository (`cd nnUNet` on linux)
 4) Install with `pip install -r requirements.txt` followed by `pip install -e .`
 
 # Getting Started 
-All the commands in this section assume that you are in a terminal and your working directory is the nnU-Net folder 
+All the commands in this section assume that you are in a terminal and your working directory is the repository folder 
 (the one that has all the subfolders like `dataset_conversion`, `evaluation`, ...)
 
 ## Set paths 
-nnU-Net needs to know where you will store raw data, want it to store preprocessed data and trained models. Have a 
+Framwork needs to know where you will store raw data, want it to store preprocessed data and trained models. Have a 
 look at the file `paths.py` and adapt it to your system.
 
 ## Preparing Datasets 
-nnU-Net was initially developed as our participation to the Medical Segmentation Decathlon <sup>1</sup>. It therefore
- relies on the dataset to be in the same format as this challenge uses. Please refer to the readme.md in the 
+The preprocessing pipeline was adapted from nnU-Net. Please refer to the readme.md in the 
  `dataset_conversion` subfolder for detailed information. Examples are also provided there. You will need to 
  convert your dataset into this format before you can continue.
  
@@ -48,8 +37,8 @@ it a name like: `TaskXX_MY_DATASET` (where XX is some number) to be consistent w
 Segmentation Decathlon.
 
 ## Experiment Planning and Preprocessing 
-This is where the magic happens. nnU-Net can now analyze your dataset and determine how to train its 
-U-Net models. To run experiment planning and preprocessing for your dataset, execute the following command:
+TODO!!
+Framework can now analyze your dataset and determine how to train its models. To run experiment planning and preprocessing for your dataset, execute the following command:
 
 `python3 experiment_planning/plan_and_preprocess_task.py -t Task07_Pancreas -p 8`
 
