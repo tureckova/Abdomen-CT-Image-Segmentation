@@ -37,7 +37,6 @@ it a name like: `TaskXX_MY_DATASET` (where XX is some number) to be consistent w
 Segmentation Decathlon.
 
 ## Experiment Planning and Preprocessing 
-TODO!!
 Framework can now analyze your dataset and determine how to train its models. To run experiment planning and preprocessing for your dataset, execute the following command:
 
 `python3 experiment_planning/plan_and_preprocess_task.py -t Task07_Pancreas -p 8`
@@ -53,118 +52,46 @@ SimpleITK did not support 4D niftis. This was simply done out of necessity.
 extracted, meaning that the brain is surrounded by zeros. There is no need to push all these zeros through the GPUs so 
 we simply save a little bit of time doing this. Cropped data is stored in the `cropped_output_dir` (`paths.py`).
 3) The data is analyzed and information about spacing, intensity distributions and shapes are determined
-4) nnU-Net configures the U-Net architectures based on that information. All U-Nets are configured to optimally use 
-**12GB Nvidia TitanX** GPUs. There is currently no way of adapting to smaller or larger GPUs.
-5) nnU-Net runs the preprocessing and saves the preprocessed data in `preprocessing_output_dir`.
+4) nnU-Net configures the architectures based on that information. All U-Nets are configured to optimally use 
+**12GB Nvidia TitanX** GPUs.
+5) The preprocessing is run and it saves the preprocessed data and plans files in `preprocessing_output_dir`. **You could accomodate the plans files (for example to fit in smaller GPU), the skript rewrite_pickle_plan.py may help you.**
 
-I strongly recommend you set `preprocessing_output_dir` on a SSD. HDDs are typically too slow for data loading. 
+I strongly recommend you set `preprocessing_output_dir` on a SSD. HDDs are typically too slow for data loading.
 
-## Training Models 
-The following pipeline describes what we ran for all the challenge submissions. If you are not interested in getting 
-every last bit of performance we recommend you also look at the Recommendations section.
-
-nnU-Net uses three different U-Net models and can automatically choose which (of what ensemble) of them to use. The 
-default setting is to train each of these models in a five-fold cross-validation.
+## Training Models
+In our paper we compared two variants of 3D CNN - VNet or UNet and two resolution variants - full-resolution and low-resolution. The default setting is to train each of these models in a five-fold cross-validation.
 
 Trained models are stored in `network_training_output_dir` (specified in `paths.py`).
 
-### 2D U-Net 
 For `FOLD` in [0, 4], run:
 
-`python run/run_training.py 2d nnUNetTrainer TaskXX_MY_DATASET FOLD --ndet`
+`python run/run_training.py [3d_fullres/3d_lowres] nnUNetTrainer TaskXX_MY_DATASET FOLD --ndet --vnet=[0/1]`
 
-### 3D U-Net (full resolution)
-For `FOLD` in [0, 4], run:
+you need to choose only one of variants in [] and remove the brackets.
 
-`python run/run_training.py 3d_fullres nnUNetTrainer TaskXX_MY_DATASET FOLD --ndet`
+You can continue the already started training of the model by adding --continue_training to the command. The model will recover from the newest checkpoint.
 
-### 3D U-Net Cascade 
-The 3D U-Net cascade only applies to datasets where the patch size possible in the 'fullres' setting is too small 
-relative to the size of the image data. If the cascade was configured you can run it as follows, otherwise this step 
-can be skipped.
-
-For `FOLD` in [0, 4], run:
-
-`python run/run_training.py 3d_lowres nnUNetTrainer Task07_Pancreas 4"" --ndet`
-
-After validation these models will automatically also predict the segmentations for the next stage of the cascade and 
-save them in the correct spacing.
-
-Then run
-For `FOLD` in [0, 4], run:
-
-`python run/run_training.py 3d_cascade_fullres nnUNetTrainerCascadeFullRes TaskXX_MY_DATASET FOLD --ndet`
-
-## Ensembling 
-Once everything that needs to be trained has been trained nnU-Net can ensemble the cross-validation results to figure 
-out what the best combination of models is:
-
-`python evaluation/model_selection/figure_out_what_to_submit.py -t XX`
-
-where `XX` is the taskID you set for your dataset. This will generate as csv file in `network_training_output_dir` 
-with the results.
-
-You can also give a list of task ids to summarize several datastes at once.
+## Evaluation of models
+The model is evaluated automaticaly in the end of the training, but the model could be only evaluated by the same command as training only with added `-val` in the end of it.
 
 ## Inference 
 You can use trained models to predict test data. In order to be able to do so the test data must be provided in the 
-same format as the training data. Specifically, the data must be splitted in 3s niftis, so if you have more than one 
-modality the files must be named like this:
+same format as the training data. 
 
-```
-CaseIdentifier1_0000.nii.gz, CaseIdnetifier1_0001.nii.gz, ...
-CaseIdentifier2_0000.nii.gz, CaseIdnetifier2_0001.nii.gz, ...
-...
-```
+To run inference use the following script:
 
-To run inference for 3D U-Net model, use the following script:
+`python inference/predict_simple.py -i INPUT_FOLDER -o OUTPUT_FOLDER -t TaskXX_MY_DATASET -tr nnUNetTrainer -m [3d_fullres/3d_lowres] --vnet=[0/1]`
 
-`python inference/predict_simple.py -i INPUT_FOLDER -o OUTPUT_FOLDER -t TaskXX_MY_DATASET -tr nnUNetTrainer -m 3d_fullres`
+If you wish to ensemble different inference cases, run all inference commands with the `-z` argument. This will tell the framework to save the softmax probabilities as well. They are needed for ensembling.
 
-If you wish to use the 2D U-Nets, you can set `-m 2d` instead of `3d_fullres`.
-
-To run inference with the cascade, run the following two commands:
-
-`python inference/predict_simple.py -i INPUT_FOLDER -o OUTPUT_FOLDER_LOWRES -t TaskXX_MY_DATASET -tr nnUNetTrainer -m 3d_lowres`
-
-`python inference/predict_simple.py -i INPUT_FOLDER -o OUTPUT_FOLDER_CASCADE -t TaskXX_MY_DATASET -tr 
-nnUNetTrainerCascadeFullRes -m 3d_fullres_cascade -l OUTPUT_FOLDER_LOWRES`
-
-here we first predict the low resolution segmentations and then use them for the second stage of the cascade.
-
-There are a lot more flags you can set for inference. Please consult the help of predict_simple.py for more information.
-
-### Ensembling test cases 
-Per default nnU-Net uses the five models obtained from cross-validation as an ensemble. How to ensemble different U-Net Models 
-(for example 2D and 3D U-Net) is explained below.
-
-If you wish to ensemble test cases, run all inference commands with the `-z` argument. This will tell nnU-Net to save the 
-softmax probabilities as well. They are needed for ensembling.
-
-You can then ensemble the predictions of two output folders with the following command:
+### Ensembling predicted results
+You can then ensemble the predictions of two output folders (there must be saved the softmax probabilities, see above) with the following command:
 
 `python inference/ensemble_predictions.py -f FOLDER1 FODLER2 ... -o OUTPUT_FOLDER`
 
 This will ensemble the predictions located in `FODLER1, FOLDER2, ...` and write them into `OUTPUT_FOLDER`
 
-
 ## Tips and Tricks
-The model training pipeline above is for challenge participations. Depending on your task you may not want to train all 
-U-Net models and you may also not want to run a cross-validation all the time.
-
-#### I don't want to train all these models. Which one is the best?
-Here are some recommendations about what U-Net model to train:
-- It is safe to say that on average, the 3D U-Net model was most robust. If you just want to use nnU-Net because you 
-need segmentations, I recommend you start with this.
-- If you are not happy with the results from the 3D U-Net then you can try the following:
-  - if your cases are very large so that the patch size of the 3d U-Net only covers a very small fraction of an image then 
-  it is possible that the 3d U-Net cannot capture sufficient contextual information in order to be effective. If this 
-  is the case, you should consider running the 3d U-Net cascade
-  - If your data is very anisotropic then a 2D U-Net may actually be a better choice (Promise12, ACDC, Task05_Prostate 
-  from the decathlon are good examples)
-
-You do not have to run five-fold cross-validation all the time. If you want to test single model performance, use
- *all* for `FOLD` instead of a number.
  
 #### Manual Splitting of Data
 The cross-validation in nnU-Net splits on a per-case basis. This may sometimes not be desired, for example because 
@@ -179,20 +106,3 @@ splits_final.pkl file. Use load_pickle and save_pickle from batchgenerators.util
 #### Sharing Models
 You can share trained models by simply sending the corresponding output folder from `network_training_output_dir` to 
 whoever you want share them with. The recipient can then use nnU-Net for inference with this model.
-
-## FAQ
-Ask questions and I will post the answers here
-
-## Extending nnU-Net
-nnU-Net was developed in a very short amount of time and has not been planned thoroughly form the start (this is not 
-really possible for such a project). As such it is quite convoluted and complex, maybe unnessearily so. If you wish to 
-extend nnU-Net, ask questions if something is not clear. But please also keep in mind that this 
-software is provided 'as is' and the amount of support we can give is limited :-)
-
-## Changelog
-nothing so far
-
-
-
-
-<sup>1</sup>http://medicaldecathlon.com/
