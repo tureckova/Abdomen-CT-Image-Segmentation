@@ -121,7 +121,7 @@ def analyze_dataset(task_string, override=False, collect_intensityproperties=Tru
 
 def plan_and_preprocess(task_string, num_threads=8, no_preprocessing=False):
     from nnunet.experiment_planning.experiment_planner_baseline_2DUNet import ExperimentPlanner2D
-    from nnunet.experiment_planning.experiment_planner_baseline_3DUNet import ExperimentPlanner
+    # from nnunet.experiment_planning.experiment_planner_baseline_3DUNet import ExperimentPlanner
 
     preprocessing_output_dir_this_task_train = join(preprocessing_output_dir, task_string)
     cropped_out_dir = join(cropped_output_dir, task_string)
@@ -135,10 +135,10 @@ def plan_and_preprocess(task_string, num_threads=8, no_preprocessing=False):
     if not no_preprocessing:
         exp_planner.run_preprocessing(num_threads)
 
-    exp_planner = ExperimentPlanner2D(cropped_out_dir, preprocessing_output_dir_this_task_train)
-    exp_planner.plan_experiment()
-    if not no_preprocessing:
-        exp_planner.run_preprocessing(num_threads)
+    # exp_planner = ExperimentPlanner2D(cropped_out_dir, preprocessing_output_dir_this_task_train)
+    # exp_planner.plan_experiment()
+    # if not no_preprocessing:
+    #     exp_planner.run_preprocessing(num_threads)
 
     # write which class is in which slice to all training cases (required to speed up 2D Dataloader)
     # This is done for all data so that if we wanted to use them with 2D we could do so
