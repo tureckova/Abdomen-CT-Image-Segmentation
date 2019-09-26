@@ -56,7 +56,7 @@ we simply save a little bit of time doing this. Cropped data is stored in the `c
 **12GB Nvidia TitanX** GPUs.
 5) The preprocessing is run and it saves the preprocessed data and plans files in `preprocessing_output_dir`. **You could accomodate the plans files (for example to fit in smaller GPU), the skript rewrite_pickle_plan.py may help you.**
 
-I strongly recommend you set `preprocessing_output_dir` on a SSD. HDDs are typically too slow for data loading.
+I strongly recommend you set `preprocessing_output_dir` on a SSD. HDDs are typically too slow for data loading. Plan files as we use it is the paper here in the folder plans_files.
 
 ## Training Models
 In our paper we compared two variants of 3D CNN - VNet or UNet and two resolution variants - full-resolution and low-resolution. The default setting is to train each of these models in a five-fold cross-validation.
