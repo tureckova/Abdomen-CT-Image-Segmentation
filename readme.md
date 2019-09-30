@@ -6,9 +6,9 @@ This framework designed for medical image segmentation. It uses the ushaped deep
 
 Please also cite this paper if you are using this code for your research!
 
-The attention mechanism helps the network to focus on the desired area of CT abdomen scan and therefore improves the accuracy.
+The attention mechanism helps the network to focus on the desired area of CT abdomen scan and therefore improves the accuracy. The attention maps from different network lewels for three different abdomen CT images datasets is in Fig 1 below.
 
-[[https://github.com/username/repository/blob/master/img/octocat.png|alt=octocat]]
+![att_map](https://user-images.githubusercontent.com/32820891/65874932-cd3d9a00-e386-11e9-8fa4-b59e419285c3.png)
 
 This repository is still work in progress. Things may break. If that is the case, please let us know.
 The code was wastly inspired by the nnU-Net framework authored by Fabian Isensee, so in case of troubles you may want to study this repository and its describtion, too: https://github.com/MIC-DKFZ/nnUNet/tree/master/nnunet.
