@@ -19,7 +19,7 @@ The instalation is only tested on Linux (Ubuntu). It may work on other operating
 Installation instructions
 1) Install PyTorch (https://pytorch.org/get-started/locally/)
 2) Clone this repository `git clone https://github.com/tureckova/Abdomen-CT-Image-Segmentation`
-3) Go into the repository (`cd nnUNet` on linux)
+3) Go into the repository (`cd Abdomen-CT-Image-Segmentation` on linux)
 4) Install with `pip install -r requirements.txt` followed by `pip install -e .`
 
 # Getting Started 
