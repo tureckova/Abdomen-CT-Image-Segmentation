@@ -95,6 +95,12 @@ You can then ensemble the predictions of two output folders (there must be saved
 
 This will ensemble the predictions located in `FODLER1, FOLDER2, ...` and write them into `OUTPUT_FOLDER`
 
+You can quicly evaluate the esemble files with the folowing command:
+
+`python3 inference/validate_nifti_folder.py -f PREDICTED_FOLDER -gtf FOLDER_GROUND_TURE`
+
+This will create summary.json file in location PREDICTED_FOLDER with evaluation scores for each file as well as mean evaluation scores.
+
 ## Tips and Tricks
  
 #### Manual Splitting of Data
