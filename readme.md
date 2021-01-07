@@ -2,7 +2,7 @@
 
 This framework designed for medical image segmentation. It uses the ushaped deep CNN architecture (VNet or UNet) extended by attention gates. For more information about the method, please read the following paper:
 
-`The paper describing the method is still under the review.`
+https://doi.org/10.3389/frobt.2020.00106
 
 Please also cite this paper if you are using this code for your research!
 
